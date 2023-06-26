@@ -1,29 +1,20 @@
 {
-  "applications": {
-    "gecko": {
-      "id": "cpi_helper@dbeck121"
-    }
-  },
   "name": "SAP CPI Helper",
   "short_name": "CPI Helper",
-  "version": "3.4.0",
+  "version": "2.8.1",
   "description": "Extends the SAP Cloud Platform Integration with some useful features to improve usability.",
   "author": "Dominic Beckbauer",
   "homepage_url": "https://github.com/dbeck121/CPI-Helper-Chrome-Extension",
-  "permissions": [
-    "declarativeContent",
-    "storage",
+  "host_permissions": [
     "https://*.hana.ondemand.com/itspaces",
     "https://*.platform.sapcloud.cn/itspaces",
-    "https://*.hana.ondemand.com/shell",
-    "webRequest"
+    "https://*.hana.ondemand.com/shell"
   ],
-  "background": {
-    "scripts": [
-      "background.js",
-      "hot-reload.js"
-    ],
-    "persistent": true
+  "permissions": [
+    "storage"
+  ],
+  "background": { 
+    "service_worker": "background.js"
   },
   "content_scripts": [
     {
@@ -42,13 +33,10 @@
         "/lib/jQuery/jquery.min.js",
         "/lib/semanticui/semantic.min.js",
         "/plugins/run.js",
-        "/plugins/simplenotepad.js",
-        "/plugins/reference.js",
         "/plugins/undeploy.js",
         "/plugins/cpitransporter.js",
         "/plugins/figaf.js",
         "/plugins/OpenAIServices.js",
-        "/plugins/WHINT_IFD.js",
         "/plugins/settingsPaneResizer.js",
         "/scripts/ui.js",
         "/scripts/tools.js",
@@ -65,20 +53,14 @@
       ]
     }
   ],
-  "page_action": {
+  "action": {
     "default_popup": "popup.html",
     "default_icon": {
       "16": "images/cpi_helper16_full.png",
       "32": "images/cpi_helper32_full.png",
       "48": "images/cpi_helper48_full.png",
       "128": "images/cpi_helper128_full.png"
-    },
-    "show_matches": [
-      "https://*.hana.ondemand.com/shell/design/*",
-      "https://*.hana.ondemand.com/itspaces/*",
-      "https://*.hana.ondemand.com/shell/*",
-      "https://*.platform.sapcloud.cn/itspaces/*"
-    ]
+    }
   },
   "icons": {
     "16": "images/cpi_helper16_full.png",
@@ -87,9 +69,17 @@
     "128": "images/cpi_helper128_full.png"
   },
   "web_accessible_resources": [
-    "images/favicons/*.png",
-    "lib/semanticui/*",
-    "images/*"
+    {
+      "resources": [
+        "images/favicons/*.png",
+        "lib/semanticui/*",
+        "plugins/settingsPaneResizer_inject.js"
+      ],
+      "matches": [
+        "https://*.hana.ondemand.com/*",
+        "https://*.platform.sapcloud.cn/*"
+      ]      
+    }
   ],
-  "manifest_version": 2
+  "manifest_version": 3
 }

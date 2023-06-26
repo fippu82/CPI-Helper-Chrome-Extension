@@ -97,46 +97,14 @@ var plugin = {
 					newHeightInPct =  configPaneHeightPercent;  
                 }
                 
-                // create inline script to trigger the pane restore button in UI5
-                const scriptElement = document.createElement('script');
-                scriptElement.setAttribute("id", "settingsPaneResizerScript");
-
-                scriptElement.innerHTML = `
-                    function extendSettingsPane() {
-                        // only press button if pane not yet expanded
-                        var minButton = $('[id $="iflowSplitter-bar0-min-btn-img"]');
-                        var pauseButton = $("#pauseButton");                        
-                        //console.log("extendSettingsPane")
-                        if (minButton.length == 0 && !pauseButton.hasClass("cpiHelper_inlineInfo-active") ) {
-                            //console.log("minButton not visible - expanding pane to " + "${newHeightInPct}" + "%");
-                            //console.log("Settings pane expanded");
-                            window.sap.ui.getCore().byId( $('[id $="--iflowSplitter-bar0-restore-btn"]').eq(0).attr("id")).firePress();
-                            var s = window.sap.ui.getCore().byId( $('[id^="__xmlview"][id$="-iflowSplitter"]').eq(0).attr("id"));
-                            s.getContentAreas()[0].setLayoutData(new sap.ui.layout.SplitterLayoutData({ size: "${(100-newHeightInPct) + "%"}" }));
-                            s.getContentAreas()[1].setLayoutData(new sap.ui.layout.SplitterLayoutData({ size: "${newHeightInPct + "%"}" }));
-                            //s.invalidate();             
-                        }            
-                    }
-
-                    // add trigger of resizer when page content changes (to also catch page updates via 'ajax' instead of just full page reloads)
-                    var body = document.getElementsByTagName("body")[0];
-					//var body = $('[id $="--iflowObjectPageLayout"]')[0]; // didn't always trigger
-                    var bodyObserver = new MutationObserver(function(mutations) {                                                                       
-                        mutations.forEach(mutation => {
-                            //console.log("checking: " + mutation.target.id)
-							//console.log(mutation)
-                            if (mutation.target.id.includes("iflowObjectPageLayout")) {
-                                extendSettingsPane();
-                            }
-                        });
-                    });
-                    var config = { childList: true, subtree: true };
-                    bodyObserver.observe(body, config);
-                `;
-
-                document.head.appendChild(scriptElement);  
-                
+                // load script and inject it to page to trigger the pane restore button in UI5 core
+                var s = document.createElement('script');
+                s.setAttribute("id", "settingsPaneResizerScript");
+                s.src = chrome.runtime.getURL('plugins/settingsPaneResizer_inject.js');        
+                s.dataset.params = JSON.stringify({newHeightInPct: newHeightInPct});
+                (document.head || document.documentElement).appendChild(s);             
             }
+
 
              
             // add listener to tabs of the settings pane to immediately trigger resize when changing tab. (Doesn't work 100%, so we need to call doResize() on each plugin refresh too)
