@@ -3,7 +3,7 @@ if (!window.groovyDebugSendToIDE) {
   window.groovyDebugSendToIDE = async function () {
     const debugData = window.currentGroovyDebugData;
     await sendToExternalIDE({}, debugData); // settings empty, but function uses debugData
-    showToast(`Debug data sent to IDE`, "success");
+    showToast(`Debug data sent to IDE`, "Success");
     $("#cpiHelper_semanticui_modal").modal("hide");
   };
 }
@@ -74,7 +74,7 @@ var plugin = {
 
         if (!iFlowUrl) {
           $("#cpiHelper_waiting_model").modal("hide");
-          showToast("Could not fetch iFlow structure - make sure you're on an integration flow page", "Groovy Debugger", "error");
+          showToast("Could not fetch iFlow structure - make sure you're on an integration flow page", "Groovy Debugger", "Error");
           return;
         }
 
@@ -91,7 +91,7 @@ var plugin = {
 
         if (groovyElements.length === 0) {
           $("#cpiHelper_waiting_model").modal("hide");
-          showToast("No Groovy Script steps found in this integration flow", "Groovy Debugger", "warning");
+          showToast("No Groovy Script steps found in this integration flow", "Groovy Debugger", "Warning");
           return;
         }
 
@@ -114,10 +114,10 @@ var plugin = {
         setupGroovyClickHandlers(settings, runInfo, groovyElements, iFlowData, iFlowUrl);
 
         $("#cpiHelper_waiting_model").modal("hide");
-        showToast("Groovy steps highlighted - click on any highlighted Groovy step to debug", "success");
+        showToast("Groovy steps highlighted - click on any highlighted Groovy step to debug", "Success");
       } catch (error) {
         log.error("Error in Groovy Debugger:", error);
-        showToast("Error: " + error.message, "Groovy Debugger", "error");
+        showToast("Error: " + error.message, "Groovy Debugger", "Error");
         $("#cpiHelper_waiting_model").modal("hide");
       }
     },
@@ -268,7 +268,7 @@ function setupGroovyClickHandlers(settings, runInfo, groovyElements, iFlowData, 
 
           // Check if there's meaningful data to display
           if ((!debugData.payload || debugData.payload === "") && Object.keys(debugData.headers || {}).length === 0 && Object.keys(debugData.properties || {}).length === 0) {
-            showToast("No debug data available for this Groovy step", "warning");
+            showToast("No debug data available for this Groovy step", "Warning");
             return;
           }
 
@@ -283,7 +283,7 @@ function setupGroovyClickHandlers(settings, runInfo, groovyElements, iFlowData, 
           });
         } catch (error) {
           log.error("Error in groovy click handler:", error);
-          showToast("Error: " + error.message, "error");
+          showToast("Error: " + error.message, "Error");
         }
       };
     }
