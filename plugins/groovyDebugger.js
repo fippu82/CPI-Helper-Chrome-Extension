@@ -261,8 +261,8 @@ var plugin = {
       const artifactId = await getArtifactIdDirectly();
       console.log("Direct API call artifactId:", artifactId);
 
-      console.log(pluginHelper);
-      console.log(runInfo);
+      //console.log(pluginHelper);
+      //console.log(runInfo);
 
       showWaitingPopup("Fetching iFlow data, trace information and highlighting Groovy steps with data...", "ui blue");
 
