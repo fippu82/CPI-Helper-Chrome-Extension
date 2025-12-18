@@ -66,7 +66,7 @@ var plugin = {
         return; // Deselected, just clear and exit
       }
 
-      showWaitingPopup("Fetching iFlow data and highlighting Groovy steps progressively...", "ui blue");
+      showWaitingPopup("Fetching iFlow data, trace information and highlighting Groovy steps with data...", "ui blue");
 
       try {
         const baseUrl = "https://" + pluginHelper.tenant + "/api/1.0/workspace/";
@@ -100,21 +100,45 @@ var plugin = {
         // Reset any existing highlighting
         resetGroovyHighlighting();
 
-        // Highlight all groovy script elements
-        applyGroovyHighlighting(groovyElements);
+        // Get trace elements to identify which groovy steps have been executed
+        const logRuns = await createInlineTraceElements(runInfo.messageGuid, false);
+        if (!logRuns || !inlineTraceElements?.length) {
+          $("#cpiHelper_waiting_model").modal("hide");
+          showToast("No trace data found for this message", "Groovy Debugger", "Warning");
+          return;
+        }
+
+        // Find groovy elements that have corresponding trace data
+        const groovyElementsWithTrace = groovyElements.filter((element) => {
+          const matchingTraceElements = inlineTraceElements.filter((traceElement) => {
+            const traceId = traceElement.StepId || traceElement.ModelStepId;
+            return traceId === element.id;
+          });
+          return matchingTraceElements.length > 0;
+        });
+
+        if (groovyElementsWithTrace.length === 0) {
+          $("#cpiHelper_waiting_model").modal("hide");
+          showToast("No Groovy steps with trace data found in this message", "Groovy Debugger", "Warning");
+          return;
+        }
+
+        // Highlight only groovy script elements that have trace data
+        applyGroovyHighlighting(groovyElementsWithTrace);
 
         // Store data for click handling
         window.groovyDebuggerData = {
           settings: settings,
           runInfo: runInfo,
-          groovyElements: groovyElements,
+          groovyElements: groovyElementsWithTrace,
           iFlowData: iFlowData,
+          iFlowUrl: iFlowUrl,
         };
 
-        setupGroovyClickHandlers(settings, runInfo, groovyElements, iFlowData, iFlowUrl);
+        setupGroovyClickHandlers(settings, runInfo, groovyElementsWithTrace, iFlowData, iFlowUrl);
 
         $("#cpiHelper_waiting_model").modal("hide");
-        showToast("Groovy steps highlighted - click on any highlighted Groovy step to debug", "Success");
+        showToast("Groovy steps with data highlighted - click on any highlighted Groovy step to debug", "Success");
       } catch (error) {
         log.error("Error in Groovy Debugger:", error);
         showToast("Error: " + error.message, "Groovy Debugger", "Error");
