@@ -8,17 +8,89 @@ if (!window.groovyDebugSendToIDE) {
   };
 }
 
+// Direct API call to get artifactId
+async function getArtifactIdDirectly() {
+  try {
+    if (cpiData.cpiPlatform === "neo") {
+      // For Neo platform
+      const listResponse = await makeCallPromise("GET", "/" + cpiData.urlExtension + "Operations/com.sap.it.op.tmn.commands.dashboard.webui.IntegrationComponentsListCommand", false, null, null, null, null, true);
+      const listData = new XmlToJson().parse(listResponse)["com.sap.it.op.tmn.commands.dashboard.webui.IntegrationComponentsListResponse"];
+      const artifact = Array.isArray(listData.artifactInformations)
+        ? listData.artifactInformations.find((e) => e.symbolicName === cpiData.integrationFlowId)
+        : listData.artifactInformations?.symbolicName === cpiData.integrationFlowId
+        ? listData.artifactInformations
+        : null;
+
+      if (!artifact) {
+        throw new Error("Integration Flow not found in list");
+      }
+
+      const detailResponse = await makeCallPromise(
+        "GET",
+        "/" + cpiData.urlExtension + "Operations/com.sap.it.op.tmn.commands.dashboard.webui.IntegrationComponentDetailCommand?artifactId=" + artifact.id,
+        60,
+        "application/json",
+        null,
+        null,
+        null,
+        true
+      );
+      const detailData = JSON.parse(detailResponse);
+
+      return detailData.artifactInformation.id;
+    } else {
+      // For CF platform - simplified version
+      const listResponse = await makeCallPromise("GET", "/" + cpiData.urlExtension + "Operations/com.sap.it.op.tmn.commands.dashboard.webui.IntegrationComponentsListCommand", false, null, null, null, null, true);
+      const listData = new XmlToJson().parse(listResponse)["com.sap.it.op.tmn.commands.dashboard.webui.IntegrationComponentsListResponse"];
+      const artifact = Array.isArray(listData.artifactInformations)
+        ? listData.artifactInformations.find((e) => e.symbolicName === cpiData.integrationFlowId)
+        : listData.artifactInformations?.symbolicName === cpiData.integrationFlowId
+        ? listData.artifactInformations
+        : null;
+
+      if (!artifact) {
+        throw new Error("Integration Flow not found in list");
+      }
+
+      return artifact.id; // For CF, the artifact id from list might be sufficient
+    }
+  } catch (error) {
+    log.error("Error getting artifactId directly:", error);
+    throw error;
+  }
+}
+
 // Create popup content for Groovy debug data
 async function createGroovyDebugContent(data) {
-  let bodyContent = formatTrace(data.payload || "No payload", "groovyDebugBody", null, "payload.txt");
+  // Lazy load body content when Body tab is activated
+  let bodyContent = async () => {
+    try {
+      let payload = await makeCallPromise("GET", "/" + cpiData.urlExtension + "odata/api/v1/TraceMessages(" + data.traceId + ")/$value", true);
+      return formatTrace(payload || "No payload", "groovyDebugBody", null, "payload.txt");
+    } catch (error) {
+      log.error("Error fetching body content:", error);
+      return "<div>No body data available</div>";
+    }
+  };
 
-  let headersContent = formatHeadersAndPropertiesToTable(
-    data.headers
-      ? Object.keys(data.headers)
+  // Lazy load headers content when Headers tab is activated
+  let headersContent = async () => {
+    try {
+      let headersData = JSON.parse(await makeCallPromise("GET", "/" + cpiData.urlExtension + "odata/api/v1/TraceMessages(" + data.traceId + ")/Properties?$format=json", true)).d.results;
+      let headers = {};
+      headersData.forEach((header) => {
+        headers[header.Name] = header.Value;
+      });
+      return formatHeadersAndPropertiesToTable(
+        Object.keys(headers)
           .sort()
-          .map((key) => ({ Name: key, Value: data.headers[key] }))
-      : []
-  );
+          .map((key) => ({ Name: key, Value: headers[key] }))
+      );
+    } catch (error) {
+      log.error("Error fetching headers content:", error);
+      return "<div>No headers data available</div>";
+    }
+  };
 
   let propertiesContent = formatHeadersAndPropertiesToTable(
     data.properties
@@ -28,13 +100,41 @@ async function createGroovyDebugContent(data) {
       : []
   );
 
-  let scriptContent = `<div style="white-space: pre-wrap; font-family: monospace;">${data.groovyScript || "Script not available"}</div>`;
+  // Lazy load script content when Script tab is activated
+  let scriptContent = async () => {
+    try {
+      if (data.scriptInfo && data.scriptInfo.scriptPath) {
+        let scriptPath = data.scriptInfo.scriptPath;
+        if (scriptPath.startsWith("/script/")) {
+          scriptPath = scriptPath.replace("/script/", "//");
+        }
+        const scriptUrl = "https://" + data.scriptInfo.tenant + "/api/1.0/iflows/" + data.scriptInfo.artifactId + "/script/" + scriptPath;
+        const scriptResponse = await fetch(scriptUrl);
+        const scriptData = await scriptResponse.json();
+        const groovyScriptContent = scriptData.content || "// Script content not available";
+        return `<div style="white-space: pre-wrap; font-family: monospace;">${groovyScriptContent}</div>`;
+      } else {
+        return `<div style="white-space: pre-wrap; font-family: monospace;">// Script content not available</div>`;
+      }
+    } catch (error) {
+      log.error("Error fetching script content:", error);
+      return `<div style="white-space: pre-wrap; font-family: monospace;">// Error loading script content</div>`;
+    }
+  };
+
+  // Get Log content from stored run step data
+  let logContent = formatLogContent(data.runStepData?.RunStepProperties?.results || []);
+
+  // Get Info content from stored run step data
+  let infoContent = formatInfoContent(data.runStepData || {});
 
   let objects = [
-    { label: "Body", content: bodyContent, active: true },
+    { label: "Properties", content: propertiesContent, active: true },
     { label: "Headers", content: headersContent, active: false },
-    { label: "Properties", content: propertiesContent, active: false },
+    { label: "Body", content: bodyContent, active: false },
     { label: "Script", content: scriptContent, active: false },
+    { label: "Log", content: logContent, active: false },
+    { label: "Info", content: infoContent, active: false },
   ];
 
   let tabsContent = await createTabHTML(objects, "groovyDebugTabs");
@@ -43,6 +143,72 @@ async function createGroovyDebugContent(data) {
   window.currentGroovyDebugData = data;
 
   return tabsContent;
+}
+
+// Helper functions copied from contentScript.js for formatting
+function formatLogContent(inputList) {
+  inputList = inputList.sort(function (a, b) {
+    return a.Name.toLowerCase() > b.Name.toLowerCase() ? 1 : -1;
+  });
+  result = `<table class='ui basic striped selectable compact table'>
+  <thead><tr class="blue"><th>Name</th><th>Value</th></tr></thead>
+  <tbody>`;
+  inputList.forEach((item) => {
+    result += "<tr><td>" + item.Name + '</td><td style="word-break: break-all;">' + item.Value + "</td></tr>";
+  });
+  result += "</tbody></table>";
+  return result;
+}
+
+function formatInfoContent(inputList) {
+  valueList = [];
+
+  var stepStart = new Date(parseInt(inputList.StepStart.substr(6, 13)));
+  stepStart.setTime(stepStart.getTime() - stepStart.getTimezoneOffset() * 60 * 1000);
+
+  valueList.push({
+    Name: "Start Time",
+    Value: stepStart.toISOString().substr(0, 23),
+  });
+
+  if (inputList.StepStop) {
+    var stepStop = new Date(parseInt(inputList.StepStop.substr(6, 13)));
+    stepStop.setTime(stepStop.getTime() - stepStop.getTimezoneOffset() * 60 * 1000);
+    valueList.push({
+      Name: "End Time",
+      Value: stepStop.toISOString().substr(0, 23),
+    });
+    valueList.push({
+      Name: "Duration in milliseconds",
+      Value: stepStop - stepStart,
+    });
+    valueList.push({
+      Name: "Duration in seconds",
+      Value: (stepStop - stepStart) / 1000,
+    });
+    valueList.push({
+      Name: "Duration in minutes",
+      Value: (stepStop - stepStart) / 1000 / 60,
+    });
+  }
+
+  valueList.push({ Name: "BranchId", Value: inputList.BranchId });
+
+  valueList.push({ Name: "RunId", Value: inputList.RunId });
+
+  valueList.push({ Name: "StepId", Value: inputList.StepId });
+
+  valueList.push({ Name: "ModelStepId", Value: inputList.ModelStepId });
+
+  valueList.push({ Name: "ChildCount", Value: inputList.ChildCount });
+
+  result = `<table class='ui basic striped selectable compact table'><thead><tr class="blue"><th>Name</th><th>Value</th></tr></thead>
+  <tbody>`;
+  valueList.forEach((item) => {
+    result += "<tr><td>" + item.Name + '</td><td style="word-break: break-all;">' + item.Value + "</td></tr>";
+  });
+  result += "</tbody></table>";
+  return result;
 }
 
 var plugin = {
@@ -66,13 +232,19 @@ var plugin = {
         return; // Deselected, just clear and exit
       }
 
-      showWaitingPopup("Fetching iFlow data and highlighting Groovy steps progressively...", "ui blue");
+      // Get artifactId directly via API call
+      const artifactId = await getArtifactIdDirectly();
+      console.log("Direct API call artifactId:", artifactId);
+
+      //console.log(pluginHelper);
+      //console.log(runInfo);
+
+      showWaitingPopup("Fetching iFlow data, trace information and highlighting Groovy steps with data...", "ui blue");
 
       try {
-        const baseUrl = "https://" + pluginHelper.tenant + "/api/1.0/workspace/";
-        const iFlowUrl = await getIFlowUrl(pluginHelper, baseUrl);
+        const iFlowUrl = "https://" + pluginHelper.tenant + "/api/1.0/iflows/" + artifactId;
 
-        if (!iFlowUrl) {
+        if (!artifactId) {
           $("#cpiHelper_waiting_model").modal("hide");
           showToast("Could not fetch iFlow structure - make sure you're on an integration flow page", "Groovy Debugger", "Error");
           return;
@@ -100,21 +272,47 @@ var plugin = {
         // Reset any existing highlighting
         resetGroovyHighlighting();
 
-        // Highlight all groovy script elements
-        applyGroovyHighlighting(groovyElements);
+        // Get trace elements to identify which groovy steps have been executed
+        const logRuns = await createInlineTraceElements(runInfo.messageGuid, false);
+        if (!logRuns || !inlineTraceElements?.length) {
+          $("#cpiHelper_waiting_model").modal("hide");
+          showToast("No trace data found for this message", "Groovy Debugger", "Warning");
+          return;
+        }
+
+        // Find groovy elements that have corresponding trace data
+        const groovyElementsWithTrace = groovyElements.filter((element) => {
+          const matchingTraceElements = inlineTraceElements.filter((traceElement) => {
+            const traceId = traceElement.StepId || traceElement.ModelStepId;
+            return traceId === element.id;
+          });
+          return matchingTraceElements.length > 0;
+        });
+
+        if (groovyElementsWithTrace.length === 0) {
+          $("#cpiHelper_waiting_model").modal("hide");
+          showToast("No Groovy steps with trace data found in this message", "Groovy Debugger", "Warning");
+          return;
+        }
+
+        // Highlight only groovy script elements that have trace data
+        applyGroovyHighlighting(groovyElementsWithTrace);
 
         // Store data for click handling
         window.groovyDebuggerData = {
           settings: settings,
           runInfo: runInfo,
-          groovyElements: groovyElements,
+          groovyElements: groovyElementsWithTrace,
           iFlowData: iFlowData,
+          iFlowUrl: iFlowUrl,
+          artifactId: artifactId,
+          inlineTraceElements: inlineTraceElements,
         };
 
-        setupGroovyClickHandlers(settings, runInfo, groovyElements, iFlowData, iFlowUrl);
+        setupGroovyClickHandlers(settings, runInfo, groovyElementsWithTrace, iFlowData, artifactId, pluginHelper.tenant);
 
         $("#cpiHelper_waiting_model").modal("hide");
-        showToast("Groovy steps highlighted - click on any highlighted Groovy step to debug", "Success");
+        showToast("Groovy steps with data highlighted - click on any highlighted Groovy step to debug", "Success");
       } catch (error) {
         log.error("Error in Groovy Debugger:", error);
         showToast("Error: " + error.message, "Groovy Debugger", "Error");
@@ -128,59 +326,6 @@ var plugin = {
     },
   },
 };
-
-// Get the flow URL
-async function getIFlowUrl(pluginHelper, baseUrl) {
-  try {
-    const packageId = pluginHelper.currentPackageId || pluginHelper.lastVisitedPackageId;
-
-    if (!packageId) {
-      log.error("No package ID found");
-      return null;
-    }
-
-    // Fetch workspace
-    const workspaceResponse = await fetch(baseUrl);
-    if (!workspaceResponse.ok) {
-      throw new Error(`Workspace fetch failed: ${workspaceResponse.status}`);
-    }
-    const workspaces = await workspaceResponse.json();
-
-    const workspace = workspaces.find((ws) => ws.technicalName === packageId);
-    if (!workspace) {
-      log.error("Workspace not found for package:", packageId);
-      return null;
-    }
-
-    // Fetch artifacts
-    const artifactsUrl = `${baseUrl}${workspace.id}/artifacts/`;
-    const artifactsResponse = await fetch(artifactsUrl);
-    if (!artifactsResponse.ok) {
-      throw new Error(`Artifacts fetch failed: ${artifactsResponse.status}`);
-    }
-    const artifacts = await artifactsResponse.json();
-
-    const flowId = pluginHelper.currentIflowId || pluginHelper.lastVisitedIflowId || pluginHelper.currentArtifactId;
-    if (!flowId) {
-      log.error("No flow ID found");
-      return null;
-    }
-
-    const artifact = artifacts.find((a) => a.tooltip === flowId);
-    if (!artifact) {
-      log.error("Artifact not found for flow:", flowId);
-      return null;
-    }
-
-    const entityId = artifact.entityID;
-    const iFlowUrl = `${artifactsUrl}${entityId}/entities/${entityId}/iflows/${flowId}`;
-
-    return iFlowUrl;
-  } catch (error) {
-    log.error("Error getting iFlow URL:", error);
-    return null;
-  }
-}
 
 // Extract Groovy elements from iFlow JSON
 function extractGroovyElements(iFlowData) {
@@ -198,10 +343,15 @@ function extractGroovyElements(iFlowData) {
     }));
 }
 
-// Reset Groovy highlighting
+// Reset Groovy highlighting and remove click handlers
 function resetGroovyHighlighting() {
   document.querySelectorAll("g[id^='BPMNShape_'] rect.activity").forEach((rect) => {
     rect.style.fill = ""; // Reset fill for all elements
+  });
+  // Remove click handlers and cursor style from all BPMN shape elements
+  document.querySelectorAll("g[id^='BPMNShape_']").forEach((element) => {
+    element.style.cursor = "";
+    element.onclick = null;
   });
 }
 
@@ -222,7 +372,7 @@ function applyGroovyHighlighting(groovyElements) {
 }
 
 // Set up click handlers for highlighted Groovy elements
-function setupGroovyClickHandlers(settings, runInfo, groovyElements, iFlowData, iFlowUrl) {
+function setupGroovyClickHandlers(settings, runInfo, groovyElements, iFlowData, artifactId, tenant) {
   groovyElements.forEach((element) => {
     const selector = `g#BPMNShape_${element.id}`;
     const targetElement = document.querySelector(selector);
@@ -234,21 +384,8 @@ function setupGroovyClickHandlers(settings, runInfo, groovyElements, iFlowData, 
         event.preventDefault();
 
         try {
-          // Get the script content
-          let groovyScriptContent = "";
-          if (element.script) {
-            const scriptUrl = iFlowUrl + element.script;
-            try {
-              const scriptResponse = await fetch(scriptUrl);
-              const scriptData = await scriptResponse.json();
-              groovyScriptContent = scriptData.content || "";
-            } catch (scriptError) {
-              log.error("Error fetching groovy script content:", scriptError);
-            }
-          }
-
           // Try to get trace data for this element if available
-          let debugData = await tryGetTraceDataForElement(runInfo, element);
+          let debugData = await tryGetTraceDataForElement(runInfo, element, window.groovyDebuggerData.inlineTraceElements);
 
           if (!debugData) {
             // Create basic debug data if no trace available
@@ -256,15 +393,22 @@ function setupGroovyClickHandlers(settings, runInfo, groovyElements, iFlowData, 
               messageGuid: runInfo.messageGuid,
               stepId: element.id,
               scriptName: element.displayName,
-              groovyScript: groovyScriptContent || "// Script content not available",
+              groovyScript: "// Script content not available",
               scriptFunction: element.scriptFunction || "processData",
               timestamp: new Date().toISOString(),
             };
           } else {
-            // Add script content to trace data
-            debugData.groovyScript = groovyScriptContent || "// Script content not available";
+            // Set initial placeholder for script content (will be lazy loaded)
+            debugData.groovyScript = "// Script content not available";
             debugData.scriptFunction = element.scriptFunction || "processData";
           }
+
+          // Store script fetching info for lazy loading
+          debugData.scriptInfo = {
+            tenant: tenant,
+            artifactId: artifactId,
+            scriptPath: element.script,
+          };
 
           // Check if there's meaningful data to display
           if ((!debugData.payload || debugData.payload === "") && Object.keys(debugData.headers || {}).length === 0 && Object.keys(debugData.properties || {}).length === 0) {
@@ -290,12 +434,11 @@ function setupGroovyClickHandlers(settings, runInfo, groovyElements, iFlowData, 
   });
 }
 
-// Try to get trace data for a specific element
-async function tryGetTraceDataForElement(runInfo, element) {
+// Try to get trace data for a specific element using pre-fetched trace elements
+async function tryGetTraceDataForElement(runInfo, element, inlineTraceElements) {
   try {
-    // First, get trace elements to see if this step was executed
-    var logRuns = await createInlineTraceElements(runInfo.messageGuid, false);
-    if (!logRuns || !inlineTraceElements?.length) {
+    // Use the pre-fetched trace elements instead of fetching again
+    if (!inlineTraceElements?.length) {
       return null; // No trace data available
     }
 
@@ -335,13 +478,7 @@ async function fetchGroovyDebugData(runInfo, groovyStep) {
 
     var traceId = traceInfo.TraceId;
 
-    // Get payload (body)
-    var payload = "";
-    try {
-      payload = await makeCallPromise("GET", "/" + cpiData.urlExtension + "odata/api/v1/TraceMessages(" + traceId + ")/$value", true);
-    } catch (e) {
-      log.log("No payload for this step");
-    }
+    // Payload will be fetched lazily when Body tab is activated
 
     // Get properties
     var properties = {};
@@ -354,15 +491,14 @@ async function fetchGroovyDebugData(runInfo, groovyStep) {
       log.log("No properties for this step");
     }
 
-    // Get headers
-    var headers = {};
+    // Headers will be fetched lazily when Headers tab is activated
+
+    // Get run step data with properties for Log and Info tabs
+    var runStepData = {};
     try {
-      var headersData = JSON.parse(await makeCallPromise("GET", "/" + cpiData.urlExtension + "odata/api/v1/TraceMessages(" + traceId + ")/Properties?$format=json", true)).d.results;
-      headersData.forEach((header) => {
-        headers[header.Name] = header.Value;
-      });
+      runStepData = JSON.parse(await makeCallPromise("GET", "/" + cpiData.urlExtension + "odata/api/v1/MessageProcessingLogRunSteps(RunId='" + runId + "',ChildCount=" + childCount + ")/?$expand=RunStepProperties&$format=json", true)).d;
     } catch (e) {
-      log.log("No headers for this step");
+      log.log("No run step data for this step");
     }
 
     var groovyScript = "// Groovy script content not available via API\n// Please check your integration flow for the actual script";
@@ -372,9 +508,9 @@ async function fetchGroovyDebugData(runInfo, groovyStep) {
       stepId: groovyStep.StepId,
       runId: runId,
       childCount: childCount,
-      payload: payload,
+      traceId: traceId,
       properties: properties,
-      headers: headers,
+      runStepData: runStepData,
       groovyScript: groovyScript,
       scriptFunction: "processData", // Will be overridden by element.scriptFunction
       timestamp: new Date().toISOString(),
@@ -423,19 +559,59 @@ async function sendToExternalIDE(settings, debugData) {
 
   // Use actual debug data
   let groovyScript = debugData.groovyScript;
+  // If script not fetched yet (lazy loading), fetch it now
+  if (groovyScript === "// Script content not available" && debugData.scriptInfo) {
+    try {
+      if (debugData.scriptInfo.scriptPath) {
+        let scriptPath = debugData.scriptInfo.scriptPath;
+        if (scriptPath.startsWith("/script/")) {
+          scriptPath = scriptPath.replace("/script/", "//");
+        }
+        const scriptUrl = "https://" + debugData.scriptInfo.tenant + "/api/1.0/iflows/" + debugData.scriptInfo.artifactId + "/script/" + scriptPath;
+        const scriptResponse = await fetch(scriptUrl);
+        const scriptData = await scriptResponse.json();
+        groovyScript = scriptData.content || "// Script content not available";
+      }
+    } catch (error) {
+      log.error("Error fetching script for IDE:", error);
+      groovyScript = "// Script content not available";
+    }
+  }
   let payload = debugData.payload;
+  // If payload not fetched yet (lazy loading), fetch it now
+  if (!payload && debugData.traceId) {
+    try {
+      payload = await makeCallPromise("GET", "/" + cpiData.urlExtension + "odata/api/v1/TraceMessages(" + debugData.traceId + ")/$value", true);
+    } catch (error) {
+      log.error("Error fetching payload for IDE:", error);
+      payload = "";
+    }
+  }
   let headers = debugData.headers || {};
+  // If headers not fetched yet (lazy loading), fetch them now
+  if ((!headers || Object.keys(headers).length === 0) && debugData.traceId) {
+    try {
+      let headersData = JSON.parse(await makeCallPromise("GET", "/" + cpiData.urlExtension + "odata/api/v1/TraceMessages(" + debugData.traceId + ")/Properties?$format=json", true)).d.results;
+      headers = {};
+      headersData.forEach((header) => {
+        headers[header.Name] = header.Value;
+      });
+    } catch (error) {
+      log.error("Error fetching headers for IDE:", error);
+      headers = {};
+    }
+  }
   let properties = debugData.properties || {};
 
   // Build the JSON structure from actual debug data
   let dataObject = {
     input: {
-      body: debugData.payload,
-      headers: debugData.headers || {},
+      body: payload,
+      headers: headers,
       properties: debugData.properties || {},
     },
     script: {
-      code: debugData.groovyScript,
+      code: groovyScript,
       function: debugData.scriptFunction || "processData",
     },
   };
