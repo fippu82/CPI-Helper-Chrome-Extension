@@ -10,15 +10,35 @@ if (!window.groovyDebugSendToIDE) {
 
 // Create popup content for Groovy debug data
 async function createGroovyDebugContent(data) {
-  let bodyContent = formatTrace(data.payload || "No payload", "groovyDebugBody", null, "payload.txt");
+  // Lazy load body content when Body tab is activated
+  let bodyContent = async () => {
+    try {
+      let payload = await makeCallPromise("GET", "/" + cpiData.urlExtension + "odata/api/v1/TraceMessages(" + data.traceId + ")/$value", true);
+      return formatTrace(payload || "No payload", "groovyDebugBody", null, "payload.txt");
+    } catch (error) {
+      log.error("Error fetching body content:", error);
+      return "<div>No body data available</div>";
+    }
+  };
 
-  let headersContent = formatHeadersAndPropertiesToTable(
-    data.headers
-      ? Object.keys(data.headers)
+  // Lazy load headers content when Headers tab is activated
+  let headersContent = async () => {
+    try {
+      let headersData = JSON.parse(await makeCallPromise("GET", "/" + cpiData.urlExtension + "odata/api/v1/TraceMessages(" + data.traceId + ")/Properties?$format=json", true)).d.results;
+      let headers = {};
+      headersData.forEach((header) => {
+        headers[header.Name] = header.Value;
+      });
+      return formatHeadersAndPropertiesToTable(
+        Object.keys(headers)
           .sort()
-          .map((key) => ({ Name: key, Value: data.headers[key] }))
-      : []
-  );
+          .map((key) => ({ Name: key, Value: headers[key] }))
+      );
+    } catch (error) {
+      log.error("Error fetching headers content:", error);
+      return "<div>No headers data available</div>";
+    }
+  };
 
   let propertiesContent = formatHeadersAndPropertiesToTable(
     data.properties
@@ -28,7 +48,27 @@ async function createGroovyDebugContent(data) {
       : []
   );
 
-  let scriptContent = `<div style="white-space: pre-wrap; font-family: monospace;">${data.groovyScript || "Script not available"}</div>`;
+  // Lazy load script content when Script tab is activated
+  let scriptContent = async () => {
+    try {
+      if (data.scriptInfo && data.scriptInfo.scriptPath) {
+        let scriptPath = data.scriptInfo.scriptPath;
+        if (scriptPath.startsWith("/script/")) {
+          scriptPath = scriptPath.replace("/script/", "//");
+        }
+        const scriptUrl = "https://" + data.scriptInfo.tenant + "/api/1.0/iflows/" + data.scriptInfo.artifactId + "/script/" + scriptPath;
+        const scriptResponse = await fetch(scriptUrl);
+        const scriptData = await scriptResponse.json();
+        const groovyScriptContent = scriptData.content || "// Script content not available";
+        return `<div style="white-space: pre-wrap; font-family: monospace;">${groovyScriptContent}</div>`;
+      } else {
+        return `<div style="white-space: pre-wrap; font-family: monospace;">// Script content not available</div>`;
+      }
+    } catch (error) {
+      log.error("Error fetching script content:", error);
+      return `<div style="white-space: pre-wrap; font-family: monospace;">// Error loading script content</div>`;
+    }
+  };
 
   // Get Log content from stored run step data
   let logContent = formatLogContent(data.runStepData?.RunStepProperties?.results || []);
@@ -288,24 +328,6 @@ function setupGroovyClickHandlers(settings, runInfo, groovyElements, iFlowData, 
         event.preventDefault();
 
         try {
-          // Get the script content
-          let groovyScriptContent = "";
-          if (element.script) {
-            // Clean up script path - replace '/script/' prefix with '//' for API compatibility
-            let scriptPath = element.script;
-            if (scriptPath.startsWith("/script/")) {
-              scriptPath = scriptPath.replace("/script/", "//");
-            }
-            const scriptUrl = "https://" + tenant + "/api/1.0/iflows/" + artifactId + "/script/" + scriptPath;
-            try {
-              const scriptResponse = await fetch(scriptUrl);
-              const scriptData = await scriptResponse.json();
-              groovyScriptContent = scriptData.content || "";
-            } catch (scriptError) {
-              log.error("Error fetching groovy script content:", scriptError);
-            }
-          }
-
           // Try to get trace data for this element if available
           let debugData = await tryGetTraceDataForElement(runInfo, element, window.groovyDebuggerData.inlineTraceElements);
 
@@ -315,15 +337,22 @@ function setupGroovyClickHandlers(settings, runInfo, groovyElements, iFlowData, 
               messageGuid: runInfo.messageGuid,
               stepId: element.id,
               scriptName: element.displayName,
-              groovyScript: groovyScriptContent || "// Script content not available",
+              groovyScript: "// Script content not available",
               scriptFunction: element.scriptFunction || "processData",
               timestamp: new Date().toISOString(),
             };
           } else {
-            // Add script content to trace data
-            debugData.groovyScript = groovyScriptContent || "// Script content not available";
+            // Set initial placeholder for script content (will be lazy loaded)
+            debugData.groovyScript = "// Script content not available";
             debugData.scriptFunction = element.scriptFunction || "processData";
           }
+
+          // Store script fetching info for lazy loading
+          debugData.scriptInfo = {
+            tenant: tenant,
+            artifactId: artifactId,
+            scriptPath: element.script,
+          };
 
           // Check if there's meaningful data to display
           if ((!debugData.payload || debugData.payload === "") && Object.keys(debugData.headers || {}).length === 0 && Object.keys(debugData.properties || {}).length === 0) {
@@ -393,13 +422,7 @@ async function fetchGroovyDebugData(runInfo, groovyStep) {
 
     var traceId = traceInfo.TraceId;
 
-    // Get payload (body)
-    var payload = "";
-    try {
-      payload = await makeCallPromise("GET", "/" + cpiData.urlExtension + "odata/api/v1/TraceMessages(" + traceId + ")/$value", true);
-    } catch (e) {
-      log.log("No payload for this step");
-    }
+    // Payload will be fetched lazily when Body tab is activated
 
     // Get properties
     var properties = {};
@@ -412,16 +435,7 @@ async function fetchGroovyDebugData(runInfo, groovyStep) {
       log.log("No properties for this step");
     }
 
-    // Get headers
-    var headers = {};
-    try {
-      var headersData = JSON.parse(await makeCallPromise("GET", "/" + cpiData.urlExtension + "odata/api/v1/TraceMessages(" + traceId + ")/Properties?$format=json", true)).d.results;
-      headersData.forEach((header) => {
-        headers[header.Name] = header.Value;
-      });
-    } catch (e) {
-      log.log("No headers for this step");
-    }
+    // Headers will be fetched lazily when Headers tab is activated
 
     // Get run step data with properties for Log and Info tabs
     var runStepData = {};
@@ -438,9 +452,8 @@ async function fetchGroovyDebugData(runInfo, groovyStep) {
       stepId: groovyStep.StepId,
       runId: runId,
       childCount: childCount,
-      payload: payload,
+      traceId: traceId,
       properties: properties,
-      headers: headers,
       runStepData: runStepData,
       groovyScript: groovyScript,
       scriptFunction: "processData", // Will be overridden by element.scriptFunction
@@ -490,19 +503,59 @@ async function sendToExternalIDE(settings, debugData) {
 
   // Use actual debug data
   let groovyScript = debugData.groovyScript;
+  // If script not fetched yet (lazy loading), fetch it now
+  if (groovyScript === "// Script content not available" && debugData.scriptInfo) {
+    try {
+      if (debugData.scriptInfo.scriptPath) {
+        let scriptPath = debugData.scriptInfo.scriptPath;
+        if (scriptPath.startsWith("/script/")) {
+          scriptPath = scriptPath.replace("/script/", "//");
+        }
+        const scriptUrl = "https://" + debugData.scriptInfo.tenant + "/api/1.0/iflows/" + debugData.scriptInfo.artifactId + "/script/" + scriptPath;
+        const scriptResponse = await fetch(scriptUrl);
+        const scriptData = await scriptResponse.json();
+        groovyScript = scriptData.content || "// Script content not available";
+      }
+    } catch (error) {
+      log.error("Error fetching script for IDE:", error);
+      groovyScript = "// Script content not available";
+    }
+  }
   let payload = debugData.payload;
+  // If payload not fetched yet (lazy loading), fetch it now
+  if (!payload && debugData.traceId) {
+    try {
+      payload = await makeCallPromise("GET", "/" + cpiData.urlExtension + "odata/api/v1/TraceMessages(" + debugData.traceId + ")/$value", true);
+    } catch (error) {
+      log.error("Error fetching payload for IDE:", error);
+      payload = "";
+    }
+  }
   let headers = debugData.headers || {};
+  // If headers not fetched yet (lazy loading), fetch them now
+  if ((!headers || Object.keys(headers).length === 0) && debugData.traceId) {
+    try {
+      let headersData = JSON.parse(await makeCallPromise("GET", "/" + cpiData.urlExtension + "odata/api/v1/TraceMessages(" + debugData.traceId + ")/Properties?$format=json", true)).d.results;
+      headers = {};
+      headersData.forEach((header) => {
+        headers[header.Name] = header.Value;
+      });
+    } catch (error) {
+      log.error("Error fetching headers for IDE:", error);
+      headers = {};
+    }
+  }
   let properties = debugData.properties || {};
 
   // Build the JSON structure from actual debug data
   let dataObject = {
     input: {
-      body: debugData.payload,
-      headers: debugData.headers || {},
+      body: payload,
+      headers: headers,
       properties: debugData.properties || {},
     },
     script: {
-      code: debugData.groovyScript,
+      code: groovyScript,
       function: debugData.scriptFunction || "processData",
     },
   };
