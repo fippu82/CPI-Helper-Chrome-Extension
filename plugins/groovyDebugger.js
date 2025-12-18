@@ -103,6 +103,7 @@ async function createGroovyDebugContent(data) {
   // Lazy load script content when Script tab is activated
   let scriptContent = async () => {
     try {
+      let groovyScriptContent = "// Script content not available";
       if (data.scriptInfo && data.scriptInfo.scriptPath) {
         let scriptPath = data.scriptInfo.scriptPath;
         if (scriptPath.startsWith("/script/")) {
@@ -111,14 +112,14 @@ async function createGroovyDebugContent(data) {
         const scriptUrl = "https://" + data.scriptInfo.tenant + "/api/1.0/iflows/" + data.scriptInfo.artifactId + "/script/" + scriptPath;
         const scriptResponse = await fetch(scriptUrl);
         const scriptData = await scriptResponse.json();
-        const groovyScriptContent = scriptData.content || "// Script content not available";
-        return `<div style="white-space: pre-wrap; font-family: monospace;">${groovyScriptContent}</div>`;
-      } else {
-        return `<div style="white-space: pre-wrap; font-family: monospace;">// Script content not available</div>`;
+        groovyScriptContent = scriptData.content || "// Script content not available";
       }
+
+      // Use formatTrace function like the Body section for full editor functionality
+      return formatTrace(groovyScriptContent, "groovyDebugScript", null, "script.groovy");
     } catch (error) {
       log.error("Error fetching script content:", error);
-      return `<div style="white-space: pre-wrap; font-family: monospace;">// Error loading script content</div>`;
+      return formatTrace("// Error loading script content", "groovyDebugScript", null, "script.groovy");
     }
   };
 
