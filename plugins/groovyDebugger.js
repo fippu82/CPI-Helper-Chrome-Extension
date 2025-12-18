@@ -30,11 +30,19 @@ async function createGroovyDebugContent(data) {
 
   let scriptContent = `<div style="white-space: pre-wrap; font-family: monospace;">${data.groovyScript || "Script not available"}</div>`;
 
+  // Get Log content from stored run step data
+  let logContent = formatLogContent(data.runStepData?.RunStepProperties?.results || []);
+
+  // Get Info content from stored run step data
+  let infoContent = formatInfoContent(data.runStepData || {});
+
   let objects = [
-    { label: "Body", content: bodyContent, active: true },
+    { label: "Properties", content: propertiesContent, active: true },
     { label: "Headers", content: headersContent, active: false },
-    { label: "Properties", content: propertiesContent, active: false },
+    { label: "Body", content: bodyContent, active: false },
     { label: "Script", content: scriptContent, active: false },
+    { label: "Log", content: logContent, active: false },
+    { label: "Info", content: infoContent, active: false },
   ];
 
   let tabsContent = await createTabHTML(objects, "groovyDebugTabs");
@@ -43,6 +51,72 @@ async function createGroovyDebugContent(data) {
   window.currentGroovyDebugData = data;
 
   return tabsContent;
+}
+
+// Helper functions copied from contentScript.js for formatting
+function formatLogContent(inputList) {
+  inputList = inputList.sort(function (a, b) {
+    return a.Name.toLowerCase() > b.Name.toLowerCase() ? 1 : -1;
+  });
+  result = `<table class='ui basic striped selectable compact table'>
+  <thead><tr class="blue"><th>Name</th><th>Value</th></tr></thead>
+  <tbody>`;
+  inputList.forEach((item) => {
+    result += "<tr><td>" + item.Name + '</td><td style="word-break: break-all;">' + item.Value + "</td></tr>";
+  });
+  result += "</tbody></table>";
+  return result;
+}
+
+function formatInfoContent(inputList) {
+  valueList = [];
+
+  var stepStart = new Date(parseInt(inputList.StepStart.substr(6, 13)));
+  stepStart.setTime(stepStart.getTime() - stepStart.getTimezoneOffset() * 60 * 1000);
+
+  valueList.push({
+    Name: "Start Time",
+    Value: stepStart.toISOString().substr(0, 23),
+  });
+
+  if (inputList.StepStop) {
+    var stepStop = new Date(parseInt(inputList.StepStop.substr(6, 13)));
+    stepStop.setTime(stepStop.getTime() - stepStop.getTimezoneOffset() * 60 * 1000);
+    valueList.push({
+      Name: "End Time",
+      Value: stepStop.toISOString().substr(0, 23),
+    });
+    valueList.push({
+      Name: "Duration in milliseconds",
+      Value: stepStop - stepStart,
+    });
+    valueList.push({
+      Name: "Duration in seconds",
+      Value: (stepStop - stepStart) / 1000,
+    });
+    valueList.push({
+      Name: "Duration in minutes",
+      Value: (stepStop - stepStart) / 1000 / 60,
+    });
+  }
+
+  valueList.push({ Name: "BranchId", Value: inputList.BranchId });
+
+  valueList.push({ Name: "RunId", Value: inputList.RunId });
+
+  valueList.push({ Name: "StepId", Value: inputList.StepId });
+
+  valueList.push({ Name: "ModelStepId", Value: inputList.ModelStepId });
+
+  valueList.push({ Name: "ChildCount", Value: inputList.ChildCount });
+
+  result = `<table class='ui basic striped selectable compact table'><thead><tr class="blue"><th>Name</th><th>Value</th></tr></thead>
+  <tbody>`;
+  valueList.forEach((item) => {
+    result += "<tr><td>" + item.Name + '</td><td style="word-break: break-all;">' + item.Value + "</td></tr>";
+  });
+  result += "</tbody></table>";
+  return result;
 }
 
 var plugin = {
@@ -65,6 +139,8 @@ var plugin = {
       if (!active) {
         return; // Deselected, just clear and exit
       }
+      console.log(pluginHelper);
+      console.log(runInfo);
 
       showWaitingPopup("Fetching iFlow data, trace information and highlighting Groovy steps with data...", "ui blue");
 
@@ -347,6 +423,14 @@ async function fetchGroovyDebugData(runInfo, groovyStep) {
       log.log("No headers for this step");
     }
 
+    // Get run step data with properties for Log and Info tabs
+    var runStepData = {};
+    try {
+      runStepData = JSON.parse(await makeCallPromise("GET", "/" + cpiData.urlExtension + "odata/api/v1/MessageProcessingLogRunSteps(RunId='" + runId + "',ChildCount=" + childCount + ")/?$expand=RunStepProperties&$format=json", true)).d;
+    } catch (e) {
+      log.log("No run step data for this step");
+    }
+
     var groovyScript = "// Groovy script content not available via API\n// Please check your integration flow for the actual script";
 
     return {
@@ -357,6 +441,7 @@ async function fetchGroovyDebugData(runInfo, groovyStep) {
       payload: payload,
       properties: properties,
       headers: headers,
+      runStepData: runStepData,
       groovyScript: groovyScript,
       scriptFunction: "processData", // Will be overridden by element.scriptFunction
       timestamp: new Date().toISOString(),
