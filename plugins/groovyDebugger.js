@@ -11,31 +11,6 @@ if (!window.groovyDebugSendToIDE) {
 // Direct API call to get artifactId
 async function getArtifactIdDirectly() {
   try {
-    // Get integrationFlowId from URL if not set
-    if (!cpiData.integrationFlowId) {
-      const url = window.location.href;
-      const match = url.match(/\/integrationflows\/([0-9a-zA-Z_\-.]+)/);
-      if (match) {
-        cpiData.integrationFlowId = match[1];
-      }
-    }
-
-    if (!cpiData.integrationFlowId) {
-      throw new Error("Could not determine integrationFlowId from URL");
-    }
-
-    // Determine platform
-    if (!cpiData.cpiPlatform) {
-      const regexGetPlatform = /cfapps/;
-      const regexMatch = regexGetPlatform.exec(document.location.host);
-      cpiData.cpiPlatform = regexMatch !== null ? "cf" : "neo";
-    }
-
-    // Set urlExtension
-    if (!cpiData.urlExtension) {
-      cpiData.urlExtension = document.location.host.match(/^[^\/]*\.integrationsuite(-trial)?.*/) ? "" : "itspaces/";
-    }
-
     if (cpiData.cpiPlatform === "neo") {
       // For Neo platform
       const listResponse = await makeCallPromise("GET", "/" + cpiData.urlExtension + "Operations/com.sap.it.op.tmn.commands.dashboard.webui.IntegrationComponentsListCommand", false, null, null, null, null, true);
