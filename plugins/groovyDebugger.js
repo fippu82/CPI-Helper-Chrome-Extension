@@ -222,10 +222,15 @@ function extractGroovyElements(iFlowData) {
     }));
 }
 
-// Reset Groovy highlighting
+// Reset Groovy highlighting and remove click handlers
 function resetGroovyHighlighting() {
   document.querySelectorAll("g[id^='BPMNShape_'] rect.activity").forEach((rect) => {
     rect.style.fill = ""; // Reset fill for all elements
+  });
+  // Remove click handlers and cursor style from all BPMN shape elements
+  document.querySelectorAll("g[id^='BPMNShape_']").forEach((element) => {
+    element.style.cursor = "";
+    element.onclick = null;
   });
 }
 
