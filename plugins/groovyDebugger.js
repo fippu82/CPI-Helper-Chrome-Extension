@@ -8,6 +8,83 @@ if (!window.groovyDebugSendToIDE) {
   };
 }
 
+// Direct API call to get artifactId
+async function getArtifactIdDirectly() {
+  try {
+    // Get integrationFlowId from URL if not set
+    if (!cpiData.integrationFlowId) {
+      const url = window.location.href;
+      const match = url.match(/\/integrationflows\/([0-9a-zA-Z_\-.]+)/);
+      if (match) {
+        cpiData.integrationFlowId = match[1];
+      }
+    }
+
+    if (!cpiData.integrationFlowId) {
+      throw new Error("Could not determine integrationFlowId from URL");
+    }
+
+    // Determine platform
+    if (!cpiData.cpiPlatform) {
+      const regexGetPlatform = /cfapps/;
+      const regexMatch = regexGetPlatform.exec(document.location.host);
+      cpiData.cpiPlatform = regexMatch !== null ? "cf" : "neo";
+    }
+
+    // Set urlExtension
+    if (!cpiData.urlExtension) {
+      cpiData.urlExtension = document.location.host.match(/^[^\/]*\.integrationsuite(-trial)?.*/) ? "" : "itspaces/";
+    }
+
+    if (cpiData.cpiPlatform === "neo") {
+      // For Neo platform
+      const listResponse = await makeCallPromise("GET", "/" + cpiData.urlExtension + "Operations/com.sap.it.op.tmn.commands.dashboard.webui.IntegrationComponentsListCommand", false, null, null, null, null, true);
+      const listData = new XmlToJson().parse(listResponse)["com.sap.it.op.tmn.commands.dashboard.webui.IntegrationComponentsListResponse"];
+      const artifact = Array.isArray(listData.artifactInformations)
+        ? listData.artifactInformations.find((e) => e.symbolicName === cpiData.integrationFlowId)
+        : listData.artifactInformations?.symbolicName === cpiData.integrationFlowId
+        ? listData.artifactInformations
+        : null;
+
+      if (!artifact) {
+        throw new Error("Integration Flow not found in list");
+      }
+
+      const detailResponse = await makeCallPromise(
+        "GET",
+        "/" + cpiData.urlExtension + "Operations/com.sap.it.op.tmn.commands.dashboard.webui.IntegrationComponentDetailCommand?artifactId=" + artifact.id,
+        60,
+        "application/json",
+        null,
+        null,
+        null,
+        true
+      );
+      const detailData = JSON.parse(detailResponse);
+
+      return detailData.artifactInformation.id;
+    } else {
+      // For CF platform - simplified version
+      const listResponse = await makeCallPromise("GET", "/" + cpiData.urlExtension + "Operations/com.sap.it.op.tmn.commands.dashboard.webui.IntegrationComponentsListCommand", false, null, null, null, null, true);
+      const listData = new XmlToJson().parse(listResponse)["com.sap.it.op.tmn.commands.dashboard.webui.IntegrationComponentsListResponse"];
+      const artifact = Array.isArray(listData.artifactInformations)
+        ? listData.artifactInformations.find((e) => e.symbolicName === cpiData.integrationFlowId)
+        : listData.artifactInformations?.symbolicName === cpiData.integrationFlowId
+        ? listData.artifactInformations
+        : null;
+
+      if (!artifact) {
+        throw new Error("Integration Flow not found in list");
+      }
+
+      return artifact.id; // For CF, the artifact id from list might be sufficient
+    }
+  } catch (error) {
+    log.error("Error getting artifactId directly:", error);
+    throw error;
+  }
+}
+
 // Create popup content for Groovy debug data
 async function createGroovyDebugContent(data) {
   // Lazy load body content when Body tab is activated
@@ -179,13 +256,17 @@ var plugin = {
       if (!active) {
         return; // Deselected, just clear and exit
       }
+
+      // Get artifactId directly via API call
+      const artifactId = await getArtifactIdDirectly();
+      console.log("Direct API call artifactId:", artifactId);
+
       console.log(pluginHelper);
       console.log(runInfo);
 
       showWaitingPopup("Fetching iFlow data, trace information and highlighting Groovy steps with data...", "ui blue");
 
       try {
-        const artifactId = pluginHelper.artifactId;
         const iFlowUrl = "https://" + pluginHelper.tenant + "/api/1.0/iflows/" + artifactId;
 
         if (!artifactId) {
