@@ -69,10 +69,10 @@ var plugin = {
       showWaitingPopup("Fetching iFlow data, trace information and highlighting Groovy steps with data...", "ui blue");
 
       try {
-        const baseUrl = "https://" + pluginHelper.tenant + "/api/1.0/workspace/";
-        const iFlowUrl = await getIFlowUrl(pluginHelper, baseUrl);
+        const artifactId = pluginHelper.artifactId;
+        const iFlowUrl = "https://" + pluginHelper.tenant + "/api/1.0/iflows/" + artifactId;
 
-        if (!iFlowUrl) {
+        if (!artifactId) {
           $("#cpiHelper_waiting_model").modal("hide");
           showToast("Could not fetch iFlow structure - make sure you're on an integration flow page", "Groovy Debugger", "Error");
           return;
@@ -133,9 +133,11 @@ var plugin = {
           groovyElements: groovyElementsWithTrace,
           iFlowData: iFlowData,
           iFlowUrl: iFlowUrl,
+          artifactId: artifactId,
+          inlineTraceElements: inlineTraceElements,
         };
 
-        setupGroovyClickHandlers(settings, runInfo, groovyElementsWithTrace, iFlowData, iFlowUrl);
+        setupGroovyClickHandlers(settings, runInfo, groovyElementsWithTrace, iFlowData, artifactId, pluginHelper.tenant);
 
         $("#cpiHelper_waiting_model").modal("hide");
         showToast("Groovy steps with data highlighted - click on any highlighted Groovy step to debug", "Success");
@@ -152,59 +154,6 @@ var plugin = {
     },
   },
 };
-
-// Get the flow URL
-async function getIFlowUrl(pluginHelper, baseUrl) {
-  try {
-    const packageId = pluginHelper.currentPackageId || pluginHelper.lastVisitedPackageId;
-
-    if (!packageId) {
-      log.error("No package ID found");
-      return null;
-    }
-
-    // Fetch workspace
-    const workspaceResponse = await fetch(baseUrl);
-    if (!workspaceResponse.ok) {
-      throw new Error(`Workspace fetch failed: ${workspaceResponse.status}`);
-    }
-    const workspaces = await workspaceResponse.json();
-
-    const workspace = workspaces.find((ws) => ws.technicalName === packageId);
-    if (!workspace) {
-      log.error("Workspace not found for package:", packageId);
-      return null;
-    }
-
-    // Fetch artifacts
-    const artifactsUrl = `${baseUrl}${workspace.id}/artifacts/`;
-    const artifactsResponse = await fetch(artifactsUrl);
-    if (!artifactsResponse.ok) {
-      throw new Error(`Artifacts fetch failed: ${artifactsResponse.status}`);
-    }
-    const artifacts = await artifactsResponse.json();
-
-    const flowId = pluginHelper.currentIflowId || pluginHelper.lastVisitedIflowId || pluginHelper.currentArtifactId;
-    if (!flowId) {
-      log.error("No flow ID found");
-      return null;
-    }
-
-    const artifact = artifacts.find((a) => a.tooltip === flowId);
-    if (!artifact) {
-      log.error("Artifact not found for flow:", flowId);
-      return null;
-    }
-
-    const entityId = artifact.entityID;
-    const iFlowUrl = `${artifactsUrl}${entityId}/entities/${entityId}/iflows/${flowId}`;
-
-    return iFlowUrl;
-  } catch (error) {
-    log.error("Error getting iFlow URL:", error);
-    return null;
-  }
-}
 
 // Extract Groovy elements from iFlow JSON
 function extractGroovyElements(iFlowData) {
@@ -251,7 +200,7 @@ function applyGroovyHighlighting(groovyElements) {
 }
 
 // Set up click handlers for highlighted Groovy elements
-function setupGroovyClickHandlers(settings, runInfo, groovyElements, iFlowData, iFlowUrl) {
+function setupGroovyClickHandlers(settings, runInfo, groovyElements, iFlowData, artifactId, tenant) {
   groovyElements.forEach((element) => {
     const selector = `g#BPMNShape_${element.id}`;
     const targetElement = document.querySelector(selector);
@@ -266,7 +215,12 @@ function setupGroovyClickHandlers(settings, runInfo, groovyElements, iFlowData, 
           // Get the script content
           let groovyScriptContent = "";
           if (element.script) {
-            const scriptUrl = iFlowUrl + element.script;
+            // Clean up script path - replace '/script/' prefix with '//' for API compatibility
+            let scriptPath = element.script;
+            if (scriptPath.startsWith("/script/")) {
+              scriptPath = scriptPath.replace("/script/", "//");
+            }
+            const scriptUrl = "https://" + tenant + "/api/1.0/iflows/" + artifactId + "/script/" + scriptPath;
             try {
               const scriptResponse = await fetch(scriptUrl);
               const scriptData = await scriptResponse.json();
@@ -277,7 +231,7 @@ function setupGroovyClickHandlers(settings, runInfo, groovyElements, iFlowData, 
           }
 
           // Try to get trace data for this element if available
-          let debugData = await tryGetTraceDataForElement(runInfo, element);
+          let debugData = await tryGetTraceDataForElement(runInfo, element, window.groovyDebuggerData.inlineTraceElements);
 
           if (!debugData) {
             // Create basic debug data if no trace available
@@ -319,12 +273,11 @@ function setupGroovyClickHandlers(settings, runInfo, groovyElements, iFlowData, 
   });
 }
 
-// Try to get trace data for a specific element
-async function tryGetTraceDataForElement(runInfo, element) {
+// Try to get trace data for a specific element using pre-fetched trace elements
+async function tryGetTraceDataForElement(runInfo, element, inlineTraceElements) {
   try {
-    // First, get trace elements to see if this step was executed
-    var logRuns = await createInlineTraceElements(runInfo.messageGuid, false);
-    if (!logRuns || !inlineTraceElements?.length) {
+    // Use the pre-fetched trace elements instead of fetching again
+    if (!inlineTraceElements?.length) {
       return null; // No trace data available
     }
 
