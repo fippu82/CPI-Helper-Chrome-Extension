@@ -1,5 +1,13 @@
 // Global function for the popup button
 if (!window.groovyDebugSendToIDE) {
+  /**
+   * Global function for sending Groovy debug data to external IDE.
+   * Called from the popup button when user wants to debug externally.
+   * @async
+   * @function groovyDebugSendToIDE
+   * @global
+   * @returns {Promise<void>} Resolves when debug data is sent successfully
+   */
   window.groovyDebugSendToIDE = async function () {
     const debugData = window.currentGroovyDebugData;
     await sendToExternalIDE({}, debugData); // settings empty, but function uses debugData
@@ -8,7 +16,14 @@ if (!window.groovyDebugSendToIDE) {
   };
 }
 
-// Direct API call to get artifactId
+/**
+ * Retrieves the artifact ID directly via API call for the current integration flow.
+ * Handles both Neo and Cloud Foundry platforms with different API approaches.
+ * @async
+ * @function getArtifactIdDirectly
+ * @returns {Promise<string>} The artifact ID of the integration flow
+ * @throws {Error} If the integration flow is not found or API call fails
+ */
 async function getArtifactIdDirectly() {
   try {
     if (cpiData.cpiPlatform === "neo") {
@@ -60,7 +75,18 @@ async function getArtifactIdDirectly() {
   }
 }
 
-// Create popup content for Groovy debug data
+/**
+ * Creates the HTML content for the Groovy debug popup with multiple tabs.
+ * Uses lazy loading for performance - content is fetched only when tabs are activated.
+ * @async
+ * @function createGroovyDebugContent
+ * @param {Object} data - Debug data object containing trace information
+ * @param {string} data.traceId - The trace message ID
+ * @param {Object} data.properties - Exchange properties
+ * @param {Object} data.runStepData - Run step execution data
+ * @param {Object} data.scriptInfo - Script metadata for lazy loading
+ * @returns {Promise<string>} HTML content for the debug popup tabs
+ */
 async function createGroovyDebugContent(data) {
   // Lazy load body content when Body tab is activated
   let bodyContent = async () => {
@@ -146,7 +172,13 @@ async function createGroovyDebugContent(data) {
   return tabsContent;
 }
 
-// Helper functions copied from contentScript.js for formatting
+/**
+ * Formats log content from run step properties into an HTML table.
+ * Sorts the log entries alphabetically by name.
+ * @function formatLogContent
+ * @param {Array} inputList - Array of log entries with Name and Value properties
+ * @returns {string} HTML table string containing formatted log content
+ */
 function formatLogContent(inputList) {
   inputList = inputList.sort(function (a, b) {
     return a.Name.toLowerCase() > b.Name.toLowerCase() ? 1 : -1;
@@ -161,6 +193,20 @@ function formatLogContent(inputList) {
   return result;
 }
 
+/**
+ * Formats run step information into an HTML table showing execution details.
+ * Calculates and displays start/end times and duration information.
+ * @function formatInfoContent
+ * @param {Object} inputList - Run step data containing execution information
+ * @param {string} inputList.StepStart - Start time in Microsoft JSON date format
+ * @param {string} [inputList.StepStop] - End time in Microsoft JSON date format (optional)
+ * @param {string} inputList.BranchId - Branch identifier
+ * @param {string} inputList.RunId - Run identifier
+ * @param {string} inputList.StepId - Step identifier
+ * @param {string} inputList.ModelStepId - Model step identifier
+ * @param {number} inputList.ChildCount - Child count
+ * @returns {string} HTML table string containing formatted execution information
+ */
 function formatInfoContent(inputList) {
   valueList = [];
 
@@ -212,6 +258,26 @@ function formatInfoContent(inputList) {
   return result;
 }
 
+/**
+ * Groovy Debugger Plugin Configuration
+ * A CPI Helper plugin that enables debugging of Groovy scripts by extracting runtime trace data
+ * and providing visual step highlighting with one-click transfer to external Groovy IDE.
+ * @typedef {Object} GroovyDebuggerPlugin
+ * @property {string} metadataVersion - Plugin metadata version
+ * @property {string} id - Unique plugin identifier
+ * @property {string} name - Display name of the plugin
+ * @property {string} version - Plugin version
+ * @property {string} author - Plugin author name
+ * @property {string} email - Plugin author email
+ * @property {string} website - Plugin author website
+ * @property {string} description - HTML description of plugin functionality
+ * @property {Object} settings - Plugin settings (currently empty)
+ * @property {Object} messageSidebarButton - Sidebar button configuration
+ * @property {Object} messageSidebarButton.icon - Icon configuration for the button
+ * @property {string} messageSidebarButton.title - Tooltip text for the button
+ * @property {Function} messageSidebarButton.onClick - Click handler function
+ * @property {Function} messageSidebarButton.condition - Function to determine button visibility
+ */
 var plugin = {
   metadataVersion: "1.0.0",
   id: "groovyDebugger",
@@ -328,7 +394,15 @@ var plugin = {
   },
 };
 
-// Extract Groovy elements from iFlow JSON
+/**
+ * Extracts Groovy script elements from the integration flow JSON data.
+ * Filters elements to find only those with displayName "Groovy Script".
+ * @function extractGroovyElements
+ * @param {Object} iFlowData - The integration flow JSON structure
+ * @param {Object} iFlowData.propertyViewModel - Property view model containing flow elements
+ * @param {Array} iFlowData.propertyViewModel.listOfDefaultFlowElementModel - Array of flow elements
+ * @returns {Array} Array of Groovy script elements with id, displayName, scriptFunction, and script properties
+ */
 function extractGroovyElements(iFlowData) {
   if (!iFlowData.propertyViewModel?.listOfDefaultFlowElementModel) {
     return [];
@@ -344,7 +418,11 @@ function extractGroovyElements(iFlowData) {
     }));
 }
 
-// Reset Groovy highlighting and remove click handlers
+/**
+ * Resets all Groovy highlighting and removes click handlers from BPMN shape elements.
+ * Clears the fill color and cursor styles from all elements.
+ * @function resetGroovyHighlighting
+ */
 function resetGroovyHighlighting() {
   document.querySelectorAll("g[id^='BPMNShape_'] rect.activity").forEach((rect) => {
     rect.style.fill = ""; // Reset fill for all elements
@@ -356,7 +434,13 @@ function resetGroovyHighlighting() {
   });
 }
 
-// Apply green highlighting to found Groovy elements
+/**
+ * Applies green highlighting to found Groovy elements on the BPMN diagram.
+ * Sets fill color to green (#13af00) for visual indication of debuggable steps.
+ * @function applyGroovyHighlighting
+ * @param {Array} groovyElements - Array of Groovy script elements to highlight
+ * @param {Object} groovyElements[].id - Unique identifier of the element
+ */
 function applyGroovyHighlighting(groovyElements) {
   groovyElements.forEach((element) => {
     const selector = `g#BPMNShape_${element.id}`;
@@ -372,7 +456,17 @@ function applyGroovyHighlighting(groovyElements) {
   });
 }
 
-// Set up click handlers for highlighted Groovy elements
+/**
+ * Sets up click handlers for highlighted Groovy elements.
+ * When clicked, displays debug popup with trace data for the selected Groovy step.
+ * @function setupGroovyClickHandlers
+ * @param {Object} settings - Plugin settings
+ * @param {Object} runInfo - Runtime information for the message
+ * @param {Array} groovyElements - Array of Groovy script elements
+ * @param {Object} iFlowData - Integration flow JSON data
+ * @param {string} artifactId - Artifact identifier
+ * @param {string} tenant - Tenant name
+ */
 function setupGroovyClickHandlers(settings, runInfo, groovyElements, iFlowData, artifactId, tenant) {
   groovyElements.forEach((element) => {
     const selector = `g#BPMNShape_${element.id}`;
@@ -435,7 +529,17 @@ function setupGroovyClickHandlers(settings, runInfo, groovyElements, iFlowData, 
   });
 }
 
-// Try to get trace data for a specific element using pre-fetched trace elements
+/**
+ * Attempts to get trace data for a specific element using pre-fetched trace elements.
+ * Matches trace elements by StepId or ModelStepId to find corresponding execution data.
+ * @async
+ * @function tryGetTraceDataForElement
+ * @param {Object} runInfo - Runtime information for the message
+ * @param {Object} element - Groovy element to find trace data for
+ * @param {string} element.id - Unique identifier of the element
+ * @param {Array} inlineTraceElements - Array of pre-fetched trace elements
+ * @returns {Promise<Object|null>} Debug data object if found, null otherwise
+ */
 async function tryGetTraceDataForElement(runInfo, element, inlineTraceElements) {
   try {
     // Use the pre-fetched trace elements instead of fetching again
@@ -461,7 +565,18 @@ async function tryGetTraceDataForElement(runInfo, element, inlineTraceElements) 
   }
 }
 
-// Helper function to fetch debug data for a Groovy step
+/**
+ * Fetches debug data for a specific Groovy step from the CPI API.
+ * Retrieves trace messages, properties, and run step information.
+ * @async
+ * @function fetchGroovyDebugData
+ * @param {Object} runInfo - Runtime information containing message GUID
+ * @param {Object} groovyStep - Trace element data for the Groovy step
+ * @param {string} groovyStep.RunId - Run identifier
+ * @param {number} groovyStep.ChildCount - Child count
+ * @param {string} groovyStep.StepId - Step identifier
+ * @returns {Promise<Object|null>} Complete debug data object or null if failed
+ */
 async function fetchGroovyDebugData(runInfo, groovyStep) {
   try {
     var messageGuid = runInfo.messageGuid;
@@ -522,7 +637,13 @@ async function fetchGroovyDebugData(runInfo, groovyStep) {
   }
 }
 
-// Helper function for Base64URL encoding
+/**
+ * Converts a Uint8Array to a Base64URL encoded string.
+ * Used for URL-safe encoding of binary data.
+ * @function uint8ArrayToBase64Url
+ * @param {Uint8Array} bytes - Binary data to encode
+ * @returns {string} Base64URL encoded string
+ */
 function uint8ArrayToBase64Url(bytes) {
   // Convert Uint8Array to a binary string
   let binaryString = "";
@@ -539,7 +660,13 @@ function uint8ArrayToBase64Url(bytes) {
   return base64Url;
 }
 
-// Compress data using pako deflateRaw for compatibility with Python zlib.decompress
+/**
+ * Compresses a data string using pako deflateRaw and encodes to Base64URL.
+ * Used for compressing debug data before sending to external IDE.
+ * @function compressToBase64
+ * @param {string} dataString - JSON string to compress and encode
+ * @returns {string} Compressed and Base64URL encoded string
+ */
 function compressToBase64(dataString) {
   // Step A: Convert the JSON string into a Uint8Array (binary data)
   const dataBytes = new TextEncoder().encode(dataString);
@@ -554,7 +681,21 @@ function compressToBase64(dataString) {
   return encodedString;
 }
 
-// Send data to external IDE
+/**
+ * Sends debug data to an external Groovy IDE for debugging.
+ * Compresses and encodes the data before opening in a new tab/window.
+ * @async
+ * @function sendToExternalIDE
+ * @param {Object} settings - Plugin settings (currently unused)
+ * @param {Object} debugData - Complete debug data object
+ * @param {string} debugData.traceId - Trace message ID
+ * @param {Object} debugData.scriptInfo - Script metadata
+ * @param {string} debugData.payload - Message payload
+ * @param {Object} debugData.headers - Message headers
+ * @param {Object} debugData.properties - Exchange properties
+ * @param {string} debugData.scriptFunction - Script function name
+ * @returns {Promise<void>} Resolves when IDE is opened
+ */
 async function sendToExternalIDE(settings, debugData) {
   var ideUrl = "https://groovyide.com/cpi/share/v1/";
 
