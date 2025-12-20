@@ -920,7 +920,7 @@ async function buildButtonBar() {
   }
 
   try {
-    var headerBar = document.getElementById("__xmlview0--iflowObjectPageHeader-identifierLine");
+    var headerBar = document.querySelector("[id*='--ifl:owObjectPageHeader-identifierLine']");
     headerBar.style.paddingBottom = "0px";
   } catch (e) {
     log.error("error when trying to set padding-bottom of headerbar");
