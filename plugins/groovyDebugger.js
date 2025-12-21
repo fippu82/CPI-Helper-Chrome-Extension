@@ -9,8 +9,17 @@ if (!window.groovyDebugSendToIDE) {
    * @returns {Promise<void>} Resolves when debug data is sent successfully
    */
   window.groovyDebugSendToIDE = async function () {
+    const settings = window.groovyDebuggerData?.settings || {};
+    const ideUrl = settings.externalIdeUrl || "https://groovyide.com/cpi/share/v1/";
+    const domain = new URL(ideUrl).hostname;
+
+    const confirmed = confirm(
+      "You are about to transfer the following data to the external Groovy Web IDE for debugging:\n\n• Message Body\n• Properties\n• Headers\n• Groovy Script\n\nThis data will be sent to " + domain + ". Do you want to continue?"
+    );
+    if (!confirmed) return;
+
     const debugData = window.currentGroovyDebugData;
-    await sendToExternalIDE({}, debugData); // settings empty, but function uses debugData
+    await sendToExternalIDE(settings, debugData);
     showToast(`Debug data sent to IDE`, "Success");
     $("#cpiHelper_semanticui_modal").modal("hide");
   };
@@ -288,7 +297,9 @@ var plugin = {
   website: "https://linkedin.com/in/sunilph",
   description:
     "<b>GroovyDebugX</b> streamlines Groovy debugging by automating runtime trace extraction. With visual step highlighting and one-click data transfer to <b>Groovy WebIDE</b>, it eliminates manual data entry and accelerates your integration development.<br><br><b>Note</b>: Requires the message to be processed in <b>Trace Mode</b> to capture and transfer runtime data.",
-  settings: {},
+  settings: {
+    externalIdeUrl: { text: "External IDE URL", type: "textinput", scope: "browser" },
+  },
   messageSidebarButton: {
     icon: { text: "{}", type: "text" },
     title: "Debug Groovy Steps",
@@ -697,7 +708,7 @@ function compressToBase64(dataString) {
  * @returns {Promise<void>} Resolves when IDE is opened
  */
 async function sendToExternalIDE(settings, debugData) {
-  var ideUrl = "https://groovyide.com/cpi/share/v1/";
+  var ideUrl = settings.externalIdeUrl || "https://groovyide.com/cpi/share/v1/";
 
   // Use actual debug data
   let groovyScript = debugData.groovyScript;
