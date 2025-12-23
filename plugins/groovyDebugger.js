@@ -38,36 +38,40 @@ if (!window.groovyDebugSendToIDE) {
           <i class="exclamation triangle icon"></i>
           Data Transfer Confirmation
         </div>
-        <p>Select which data you want to transfer to the external Groovy Web IDE:</p>
+        <div class="ui info message">
+          <i class="info circle icon"></i>
+          <strong>Privacy Notice:</strong> The selected data may contain sensitive business information. Proceed with caution.
+        </div>
+        <p><strong>Destination:</strong> ${domain}</p>
+        <p>Select which data you want to transfer to the external Groovy WebIDE:</p>
         <div class="ui form">
           <div class="grouped fields">
             <div class="field">
               <div class="ui checkbox" id="transfer-body">
                 <input type="checkbox" name="transfer-body" ${userPreferences.body ? "checked" : ""}>
-                <label>Message Body</label>
+                <label>Message Body <em>(may contain sensitive data)</em></label>
               </div>
             </div>
             <div class="field">
               <div class="ui checkbox" id="transfer-script">
                 <input type="checkbox" name="transfer-script" ${userPreferences.script ? "checked" : ""}>
-                <label>Groovy Script</label>
+                <label>Groovy Script <em>(source code)</em></label>
               </div>
             </div>
             <div class="field">
               <div class="ui checkbox" id="transfer-properties">
                 <input type="checkbox" name="transfer-properties" ${userPreferences.properties ? "checked" : ""}>
-                <label>Properties</label>
+                <label>Properties <em>(may contain configuration data)</em></label>
               </div>
             </div>
             <div class="field">
               <div class="ui checkbox" id="transfer-headers">
                 <input type="checkbox" name="transfer-headers" ${userPreferences.headers ? "checked" : ""}>
-                <label>Headers</label>
+                <label>Headers <em>(may contain secutiry & metadata)</em></label>
               </div>
             </div>
           </div>
         </div>
-        <p><strong>Destination:</strong> ${domain}</p>
       </div>
     `;
 
