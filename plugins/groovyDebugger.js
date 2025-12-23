@@ -67,7 +67,7 @@ if (!window.groovyDebugSendToIDE) {
             <div class="field">
               <div class="ui checkbox" id="transfer-headers">
                 <input type="checkbox" name="transfer-headers" ${userPreferences.headers ? "checked" : ""}>
-                <label>Headers <em>(may contain secutiry & metadata)</em></label>
+                <label>Headers <em>(may contain security & metadata)</em></label>
               </div>
             </div>
           </div>
