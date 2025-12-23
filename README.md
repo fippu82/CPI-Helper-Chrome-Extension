@@ -44,11 +44,15 @@ It is open source so feel free to check the source code.
 
 ## Changelog
 
+### 3.23.0
+
+- [Plugin] GroovyDebugX IDE Plugin to send payload, headers and properties to external IDE. Special thanks to [Sunil Pharswan](https://linkedin.com/in/sunilph).
+- [Fix] Better error handling when fetching api messages. Thanks to [Philippe Addor](https://github.com/fippu82)
+
 ### 3.22.0
 
 - [Fix] Persist message downloads now have meaningful filenames
 - [Fix] Some small ui bugs
-- [Fix] Better error handling when fetching api messages
 
 ### 3.21.0
 
