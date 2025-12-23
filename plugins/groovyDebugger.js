@@ -10,7 +10,7 @@ if (!window.groovyDebugSendToIDE) {
    */
   window.groovyDebugSendToIDE = async function () {
     const settings = window.groovyDebuggerData?.settings || {};
-    const ideUrl = settings.externalIdeUrl || "https://groovyide.com/cpi/share/v1/";
+    const ideUrl = settings["groovyDebugger---externalIdeUrl"]  || "https://groovyide.com/cpi/share/v1/";
     const domain = new URL(ideUrl).hostname;
 
     // Load saved user preferences for checkbox states using plugin settings
@@ -782,7 +782,7 @@ function formatInfoContent(inputList) {
  * @returns {Promise<void>} Resolves when IDE is opened
  */
 async function sendToExternalIDE(settings, debugData, transferOptions = { body: true, properties: true, headers: true, script: true }) {
-  var ideUrl = settings.externalIdeUrl || "https://groovyide.com/cpi/share/v1/";
+  var ideUrl = settings["groovyDebugger---externalIdeUrl"]  || "https://groovyide.com/cpi/share/v1/";
 
   // Use actual debug data based on transfer options
   let groovyScript = "";
