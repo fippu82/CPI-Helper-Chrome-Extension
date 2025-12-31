@@ -44,6 +44,10 @@ It is open source so feel free to check the source code.
 
 ## Changelog
 
+### 3.24.0
+
+- [Plugin] GroovyDebugX IDE Plugin works now with Groovy Script v2 Elements. Special thanks to [Sunil Pharswan](https://linkedin.com/in/sunilph).
+
 ### 3.23.0
 
 - [Plugin] GroovyDebugX IDE Plugin to send payload, headers and properties to external IDE. Special thanks to [Sunil Pharswan](https://linkedin.com/in/sunilph).
