@@ -10,7 +10,7 @@ if (!window.groovyDebugSendToIDE) {
    */
   window.groovyDebugSendToIDE = async function () {
     const settings = window.groovyDebuggerData?.settings || {};
-    const ideUrl = settings["groovyDebugger---externalIdeUrl"]  || "https://groovyide.com/cpi/share/v1/";
+    const ideUrl = settings["groovyDebugger---externalIdeUrl"] || "https://groovyide.com/cpi/share/v1/";
     const domain = new URL(ideUrl).hostname;
 
     // Load saved user preferences for checkbox states using plugin settings
@@ -641,10 +641,14 @@ async function createGroovyDebugContent(data) {
       let groovyScriptContent = "// Script content not available";
       if (data.scriptInfo && data.scriptInfo.scriptPath) {
         let scriptPath = data.scriptInfo.scriptPath;
-        if (scriptPath.startsWith("/script/")) {
-          scriptPath = scriptPath.replace("/script/", "//");
+        let isV2Path = scriptPath.includes("/v2/");
+        let scriptVersionParam = isV2Path ? "?scriptVersion=v2" : "";
+        if (isV2Path) {
+          scriptPath = scriptPath.replace("/script/v2/", "/");
+        } else if (scriptPath.startsWith("/script/")) {
+          scriptPath = scriptPath.replace("/script/", "/");
         }
-        const scriptUrl = "https://" + data.scriptInfo.tenant + "/api/1.0/iflows/" + data.scriptInfo.artifactId + "/script/" + scriptPath;
+        const scriptUrl = "https://" + data.scriptInfo.tenant + "/api/1.0/iflows/" + data.scriptInfo.artifactId + "/script/" + scriptPath + scriptVersionParam;
         const scriptResponse = await fetch(scriptUrl);
         const scriptData = await scriptResponse.json();
         groovyScriptContent = scriptData.content || "// Script content not available";
@@ -782,7 +786,7 @@ function formatInfoContent(inputList) {
  * @returns {Promise<void>} Resolves when IDE is opened
  */
 async function sendToExternalIDE(settings, debugData, transferOptions = { body: true, properties: true, headers: true, script: true }) {
-  var ideUrl = settings["groovyDebugger---externalIdeUrl"]  || "https://groovyide.com/cpi/share/v1/";
+  var ideUrl = settings["groovyDebugger---externalIdeUrl"] || "https://groovyide.com/cpi/share/v1/";
 
   // Use actual debug data based on transfer options
   let groovyScript = "";
@@ -793,10 +797,14 @@ async function sendToExternalIDE(settings, debugData, transferOptions = { body: 
       try {
         if (debugData.scriptInfo.scriptPath) {
           let scriptPath = debugData.scriptInfo.scriptPath;
-          if (scriptPath.startsWith("/script/")) {
-            scriptPath = scriptPath.replace("/script/", "//");
+          let isV2Path = scriptPath.includes("/v2/");
+          let scriptVersionParam = isV2Path ? "?scriptVersion=v2" : "";
+          if (isV2Path) {
+            scriptPath = scriptPath.replace("/script/v2/", "/");
+          } else if (scriptPath.startsWith("/script/")) {
+            scriptPath = scriptPath.replace("/script/", "/");
           }
-          const scriptUrl = "https://" + debugData.scriptInfo.tenant + "/api/1.0/iflows/" + debugData.scriptInfo.artifactId + "/script/" + scriptPath;
+          const scriptUrl = "https://" + debugData.scriptInfo.tenant + "/api/1.0/iflows/" + debugData.scriptInfo.artifactId + "/script/" + scriptPath + scriptVersionParam;
           const scriptResponse = await fetch(scriptUrl);
           const scriptData = await scriptResponse.json();
           groovyScript = scriptData.content || "// Script content not available";
