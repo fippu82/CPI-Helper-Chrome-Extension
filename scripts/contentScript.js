@@ -834,19 +834,16 @@ async function setLogLevel(logLevel, iflowId) {
     }
   } */
 
-  // seems like bug on sap side is fixed. So we can use the runtimeLocationId in all casws
-  let locID = ', "runtimeLocationId":"cloudintegration"'; // default for cloudintegration
+  // Use selected runtime location ID from dropdown or default to cloudintegration
+  let selectedRuntimeLocation = cpiData.runtimeLocationId || "cloudintegration";
 
-  /* // if runtimeLocations length = 1 and id is cloudintegration
-  if (cpiData.runtimeLocations.length == 1 && cpiData.runtimeLocations[0].id == "cloudintegration") {
-    locID = "";
-  }
-  // if runtimeLocations length > 1
-  if (cpiData.runtimeLocations.length > 1 && cpiData.runtimeLocationId) {
-    locID = cpiData.runtimeLocationId ? ', "runtimeLocationId": "' + cpiData.runtimeLocationId + '"' : "";
+  // Check if dropdown exists and get selected value
+  const runtimeDropdown = document.getElementById("__runtime_location_dropdown");
+  if (runtimeDropdown && runtimeDropdown.value) {
+    selectedRuntimeLocation = runtimeDropdown.value;
   }
 
-  */
+  let locID = ', "runtimeLocationId":"' + selectedRuntimeLocation + '"';
 
   makeCallPromise(
     "POST",
@@ -910,6 +907,46 @@ function addBreadcrumbs() {
 //injected buttons are created here
 var powertrace = null;
 var recrutingTimerSet = false;
+
+// Function to update runtime location dropdown options
+function updateRuntimeLocationDropdown() {
+  const traceDropdownMenu = document.getElementById("__trace_dropdown_menu");
+  if (!traceDropdownMenu) {
+    return; // Dropdown not yet created
+  }
+
+  // Determine default selection if not set
+  let currentSelection = cpiData.runtimeLocationId;
+  if (!currentSelection && cpiData.runtimeLocationWithActiveIFlow && cpiData.runtimeLocationWithActiveIFlow.length > 0) {
+    const hasCloudIntegration = cpiData.runtimeLocationWithActiveIFlow.some((loc) => loc.id === "cloudintegration");
+    if (hasCloudIntegration) {
+      currentSelection = "cloudintegration";
+    } else {
+      currentSelection = cpiData.runtimeLocationWithActiveIFlow[0].id;
+    }
+    // Update global selection
+    cpiData.runtimeLocationId = currentSelection;
+  }
+
+  // Rebuild dropdown items
+  let dropdownItems = "";
+  if (cpiData.runtimeLocationWithActiveIFlow && cpiData.runtimeLocationWithActiveIFlow.length > 0) {
+    cpiData.runtimeLocationWithActiveIFlow.forEach((location) => {
+      const isSelected = location.id === currentSelection;
+      const checkmark = isSelected ? "✓ " : "&nbsp;&nbsp;";
+      dropdownItems += `<div class="__trace_dropdown_item" data-location-id="${location.id}" style="padding: 4px 10px; cursor: pointer; font-size: 13px; ${isSelected ? "background: #e3f2fd; font-weight: bold;" : ""}">${checkmark}${location.id}</div>`;
+    });
+  } else {
+    dropdownItems = `<div class="__trace_dropdown_item" style="padding: 4px 10px; cursor: default; font-size: 13px; color: #888;">No runtime locations</div>`;
+  }
+
+  traceDropdownMenu.innerHTML = dropdownItems;
+  log.debug("Runtime location dropdown updated");
+}
+
+// Make update function globally accessible
+cpiData.functions.updateRuntimeLocationDropdown = updateRuntimeLocationDropdown;
+
 async function buildButtonBar() {
   //check if the header object is ready
   let area = document.querySelector("[id*='--iflowObjectPageHeader-actions']");
@@ -920,11 +957,14 @@ async function buildButtonBar() {
   }
 
   try {
-    var headerBar = document.getElementById("__xmlview0--iflowObjectPageHeader-identifierLine");
+    var headerBar = document.querySelector("[id*='--ifl:owObjectPageHeader-identifierLine']");
     headerBar.style.paddingBottom = "0px";
   } catch (e) {
     log.error("error when trying to set padding-bottom of headerbar");
   }
+
+  // Load runtime location info before creating dropdown
+  await getIflowInfo(null, true, true);
 
   // get status of powertrace button
   var powertraceText = await refreshPowerTrace();
@@ -942,9 +982,46 @@ async function buildButtonBar() {
     var logsbutton = createElementFromHTML(
       `<button id="__button_log" accesskey="1" data-sap-ui="__buttonxx" title="Logs Kbd : 1" class="sapMBtn sapMBtnBase spcHeaderActionButton" style="display: inline-block; margin-left: 0px; float: right;"><span id="__buttonxx-inner" class="sapMBtnHoverable sapMBtnInner sapMBtnText sapMBtnTransparent sapMFocusable"><span class="sapMBtnContent" id="__button134345-content"><bdi id="button134345-BDI-content" class="sapMBtnContent">Logs</bdi></span></span></button>`
     );
-    var tracebutton = createElementFromHTML(
-      `<button id="__buttonxx" accesskey="2" data-sap-ui="__buttonxx" title="Enable traces Kbd : 2" class="sapMBtn sapMBtnBase spcHeaderActionButton" style="display: inline-block; float: right;"><span id="__buttonxx-inner" class="sapMBtnHoverable sapMBtnInner sapMBtnText sapMBtnTransparent sapMFocusable"><span class="sapMBtnContent" id="__button134345-content"><bdi id="button134345-BDI-content" class="${powertraceText}">Trace</bdi></span></span></button>`
+    // Create trace button container with split-button style
+    var traceButtonContainer = createElementFromHTML(
+      `<div id="__trace_button_container" style="display: inline-flex; align-items: stretch; float: right; position: relative; margin-left: 10px;">
+        <button id="__buttonxx" accesskey="2" data-sap-ui="__buttonxx" title="Enable traces Kbd : 2" class="sapMBtn sapMBtnBase spcHeaderActionButton" style="margin: 0 !important; border-top-right-radius: 0 !important; border-bottom-right-radius: 0 !important; padding-right: 4px !important;">
+          <span id="__buttonxx-inner" class="sapMBtnHoverable sapMBtnInner sapMBtnText sapMBtnTransparent sapMFocusable" style="border-top-right-radius: 0 !important; border-bottom-right-radius: 0 !important;">
+            <span class="sapMBtnContent" id="__button134345-content">
+              <bdi id="button134345-BDI-content" class="${powertraceText}">Trace</bdi>
+            </span>
+          </span>
+        </button>
+        <div id="__trace_dropdown_btn" title="Select Runtime Location" style="cursor: pointer; display: flex; align-items: center; padding: 0 4px; border-left: 1px solid rgba(127,127,127,0.3); background: transparent; color: inherit;">
+          <span style="font-size: 10px; transform: scaleY(0.6);">▼</span>
+        </div>
+        <div id="__trace_dropdown_menu" style="display: none; position: absolute; top: 100%; right: 0; background: white; border: 1px solid #ccc; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.15); min-width: 160px; z-index: 1000; margin-top: 2px;">
+        </div>
+      </div>`
     );
+
+    var tracebutton = traceButtonContainer.querySelector("#__buttonxx");
+    var traceDropdownBtn = traceButtonContainer.querySelector("#__trace_dropdown_btn");
+    var traceDropdownMenu = traceButtonContainer.querySelector("#__trace_dropdown_menu");
+
+    // Populate dropdown menu with runtime locations
+    // Initial call to update function to handle logic
+    if (cpiData.functions.updateRuntimeLocationDropdown) {
+      cpiData.functions.updateRuntimeLocationDropdown();
+    } else {
+      // Fallback for initial render if function not ready yet (unlikely)
+      let dropdownItems = "";
+      if (cpiData.runtimeLocationWithActiveIFlow && cpiData.runtimeLocationWithActiveIFlow.length > 0) {
+        cpiData.runtimeLocationWithActiveIFlow.forEach((location) => {
+          const isSelected = location.id === (cpiData.runtimeLocationId || "cloudintegration");
+          const checkmark = isSelected ? "✓ " : "&nbsp;&nbsp;";
+          dropdownItems += `<div class="__trace_dropdown_item" data-location-id="${location.id}" style="padding: 4px 10px; cursor: pointer; font-size: 13px; ${isSelected ? "background: #e3f2fd; font-weight: bold;" : ""}">${checkmark}${location.id}</div>`;
+        });
+      } else {
+        dropdownItems = `<div class="__trace_dropdown_item" style="padding: 4px 10px; cursor: default; font-size: 13px; color: #888;">No runtime locations</div>`;
+      }
+      traceDropdownMenu.innerHTML = dropdownItems;
+    }
     //Create Toggle Message Bar Button
     var messagebutton = createElementFromHTML(
       ' <button id="__buttonxy" accesskey="3" data-sap-ui="__buttonxy" title="Messages Kbd : 3" class="sapMBtn sapMBtnBase spcHeaderActionButton" style="display: inline-block; float: right;"><span id="__buttonxy-inner" class="sapMBtnHoverable sapMBtnInner sapMBtnText sapMBtnTransparent sapMFocusable"><span class="sapMBtnContent" id="__button13-content"><bdi id="__button18778-BDI-content">Messages</bdi></span></span></button>'
@@ -967,10 +1044,52 @@ async function buildButtonBar() {
     area.appendChild(pluginbutton);
     area.appendChild(infobutton);
     area.appendChild(messagebutton);
-    area.appendChild(tracebutton);
+    area.appendChild(traceButtonContainer);
     area.appendChild(logsbutton);
 
+    // Toggle dropdown menu
+    traceDropdownBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const isVisible = traceDropdownMenu.style.display === "block";
+      traceDropdownMenu.style.display = isVisible ? "none" : "block";
+    });
+
+    // Close dropdown when clicking outside
+    document.addEventListener("click", (e) => {
+      if (!traceButtonContainer.contains(e.target)) {
+        traceDropdownMenu.style.display = "none";
+      }
+    });
+
+    // Handle dropdown item selection
+    traceDropdownMenu.addEventListener("click", (e) => {
+      const item = e.target.closest(".__trace_dropdown_item");
+      if (item) {
+        const locationId = item.getAttribute("data-location-id");
+        cpiData.runtimeLocationId = locationId;
+        log.debug(`Runtime location changed to: ${cpiData.runtimeLocationId}`);
+
+        // Update visual selection
+        updateRuntimeLocationDropdown();
+
+        traceDropdownMenu.style.display = "none";
+      }
+    });
+
     tracebutton.addEventListener("click", async () => {
+      // Validate runtime location availability
+      if (!cpiData.runtimeLocationId && (!cpiData.runtimeLocationWithActiveIFlow || cpiData.runtimeLocationWithActiveIFlow.length === 0)) {
+        showToast("IFlow probably not deployed", "No runtime location available to activate trace.", "error");
+        return;
+      }
+
+      // Ensure a runtime location is selected
+      if (!cpiData.runtimeLocationId) {
+        // Fallback logic if not already set by updateDropdown
+        const hasCloudIntegration = cpiData.runtimeLocationWithActiveIFlow.some((loc) => loc.id === "cloudintegration");
+        cpiData.runtimeLocationId = hasCloudIntegration ? "cloudintegration" : cpiData.runtimeLocationWithActiveIFlow[0].id;
+      }
+
       const btn = document.getElementById("button134345-BDI-content");
       btn.classList.toggle("cpiHelper_powertrace");
       const objName = `${cpiData.integrationFlowId}_powertraceLastRefresh`;
@@ -1093,8 +1212,8 @@ async function getIflowInfoCf(callback, silent = false, cache = true) {
       const artifact = Array.isArray(respJson.artifactInformations)
         ? respJson.artifactInformations.find((e) => e.symbolicName == cpiData.integrationFlowId)
         : respJson.artifactInformations?.symbolicName == cpiData.integrationFlowId
-        ? respJson.artifactInformations
-        : null;
+          ? respJson.artifactInformations
+          : null;
       if (artifact) {
         cpiData.runtimeLocationWithActiveIFlow.push({
           id: loc.id,
@@ -1137,6 +1256,11 @@ async function getIflowInfoCf(callback, silent = false, cache = true) {
     cpiData.tenantId = detail?.artifactInformation?.tenantId;
     cpiData.artifactId = detail?.artifactInformation?.id;
     cpiData.version = detail?.artifactInformation?.version;
+
+    // Update runtime location dropdown if it exists
+    if (cpiData.functions.updateRuntimeLocationDropdown) {
+      cpiData.functions.updateRuntimeLocationDropdown();
+    }
 
     if (callback) callback();
   } catch (error) {
@@ -1185,6 +1309,11 @@ async function getIflowInfoNeo(callback, silent = false, cache = true) {
       cpiData.tenantId = cpiData?.flowData?.artifactInformation?.tenantId;
       cpiData.artifactId = cpiData?.flowData?.artifactInformation?.id;
       cpiData.version = cpiData?.flowData?.artifactInformation?.version;
+
+      // Update runtime location dropdown if it exists
+      if (cpiData.functions.updateRuntimeLocationDropdown) {
+        cpiData.functions.updateRuntimeLocationDropdown();
+      }
 
       if (callback) {
         callback();
@@ -1907,7 +2036,7 @@ function collectDataOfCurrentArtifact() {
   }
 
   if (result != undefined) {
-    log.log("Highlighted Artifact: " + artifactType + ": " + result);
+    log.log("Current Artifact: " + artifactType + ": " + result);
     cpiData.integrationFlowId = result; //set integration flow id for legacy reasons
     cpiData.currentArtifactId = result;
     cpiData.currentArtifactType = artifactType;
@@ -1926,27 +2055,28 @@ function collectDataOfCurrentArtifact() {
   return result;
 }
 
-function getIflowId() {
-  var url = window.location.href;
-  var result;
+async function getArtifactFullName() {
+  // Get Artifact full name: After page load, wait for the Iflow/package name field to be present in the DOM and extract the full name from it.
+  let executionCount = 0;
+  let artifactName = undefined;
 
-  //try {
-  let groups = "";
+  const intval2 = setInterval(() => {
+    executionCount++;
 
-  if (cpiIflowUriRegexp.test(url) === true) {
-    groups = url.match(cpiIflowUriRegexp).groups;
-    result = groups.artifactId;
-  }
+    artifactName = document.querySelectorAll(".sapUxAPObjectPageHeaderTitleText");
+    artifactName = artifactName[artifactName.length - 1]?.innerText; // get last element since some pages contain a hidden, first, page header with wrong text in it.
 
-  if (result != undefined) {
-    log.log("Found IFlow: " + result);
-    cpiData.currentIflowId = result;
-    cpiData.lastVisitedIflowId = result;
-  } else {
-    cpiData.currentIflowId = null;
-    log.log("no iflow found");
-  }
-  return result;
+    if (artifactName != undefined || executionCount >= 30) {
+      // Stop the interval once the element is found or after ~30 seconds if not found (then it will use the ID for the history instead)
+      clearInterval(intval2); // stop interval
+      // get full names if present
+      cpiData.currentIflowName = artifactName;
+      cpiData.lastVisitedIflowName = artifactName;
+      storeVisitedIflowsForPopup(); // store the artifact full name and ID to the history
+    }
+  }, 1000); // Check every 1s if field is present in DOM (DOMContentLoaded event listener didn't work)
+
+  return artifactName;
 }
 
 function getPackageId() {
@@ -1993,13 +2123,9 @@ async function handleUrlChange() {
   lastResponses = [];
   lastCompletedLogStart = getLastCompletedLogStart();
 
-  //check current artifact
-  await storeVisitedIflowsForPopup();
-
   getPackageId();
-  getIflowId();
-
   collectDataOfCurrentArtifact();
+  await getArtifactFullName();
 
   //init
   var xsltCount = 0;
@@ -2204,12 +2330,13 @@ async function storeVisitedIflowsForPopup() {
           //put the current flow to the last element. last position indicates last visited element
           visitedIflows.push({
             name: `${cpiArtifactId}`,
+            fullName: `${cpiData.currentIflowName}`,
             url: document.location.href + urlext,
             favorit: false,
             type: `${dataRegexp[1]}`,
           });
 
-          //delete the first one when there are more than 10 iflows in visited list
+          //delete the first one when there are more than 15 iflows in visited list
           if (visitedIflows.length > 15) {
             visitedIflows.shift();
           }
