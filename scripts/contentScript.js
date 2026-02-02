@@ -957,7 +957,7 @@ async function buildButtonBar() {
   }
 
   try {
-    var headerBar = document.querySelector("[id*='--ifl:owObjectPageHeader-identifierLine']");
+    var headerBar = document.querySelector("[id*='--iflowObjectPageHeader-identifierLine']");
     headerBar.style.paddingBottom = "0px";
   } catch (e) {
     log.error("error when trying to set padding-bottom of headerbar");
